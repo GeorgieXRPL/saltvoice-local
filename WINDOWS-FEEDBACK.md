@@ -323,3 +323,32 @@ Standby should:
 Also still paste `on standby.` when the word Salt is dropped. Treat bare `standby` / `go on standby` as control.
 
 No API keys. Log: `%LOCALAPPDATA%\SaltvoiceLocal\saltvoice-local.log`
+
+## Update 2026-08-23 08:25 PT — e46b9dd wake-on-standby test (MyPC)
+
+Pulled `e46b9dd`, restarted 08:21:06. Whisper tiny.en. User asked to push these logs to GitHub.
+
+### Wake-on-standby works if the phrase is exact
+
+After `Salt, go on standby.` the process stayed up and still transcribed:
+
+```
+08:22:55 standby — not pasting; still listening for Salt wake up
+08:23:03 ignored 'So wake up.'
+08:23:18 ignored 'Oh my god.'
+08:23:30 ignored 'Soak, wake up.'
+08:24:39 ignored 'So wake up.'
+08:24:43 stt: 'Salt wake up.' wake — listening
+```
+
+So standby no longer goes deaf. Restart is not required.
+
+### Cursor tweaks (tiny.en + phrase matching)
+
+1. **Wake is too strict.** While on standby it ignored `So wake up.`, `Soak, wake up.`, `out wake up.`, `So, wait the fuck up.` User had to land exact `Salt wake up.`
+2. **Standby is too strict.** `Soat go on standby.` was pasted into Grok Bot (Soat ≠ Salt). Exact `Salt, go on standby.` worked.
+3. Fragments still paste when armed: `layers chrome.`, `flows from`, `So go and say bye.`
+4. Earlier on this build, standby ignored `in her.` and still listened (`08:20:32`) — good.
+
+No VAD/Processing INFO in this stretch. No API keys.
+Log: `%LOCALAPPDATA%\SaltvoiceLocal\saltvoice-local.log`
