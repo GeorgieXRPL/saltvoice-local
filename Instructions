@@ -1,0 +1,19 @@
+Set up Saltvoice Local on this Windows PC. It is the offline build: local Whisper speech-to-text, then paste into Grok Bot. No API key.
+
+This is not the API Saltvoice repo. Do not mix the two.
+
+1. Confirm Python 3.11+ is installed and on PATH (`python --version`). If not, tell me to install it from python.org with “Add python.exe to PATH” and stop.
+2. Clone https://github.com/GeorgieXRPL/saltvoice-local into C:\Users\<ME>\saltvoice-local (use my real Windows username). The repo is private — use gh or git with my existing GitHub login.
+3. If a folder named Saltvoice (the API app) is already running, close it first. Do not run Saltvoice and Saltvoice Local at the same time.
+4. Copy config.example.yaml to config.yaml if config.yaml does not exist. There is no .env and no XAI_API_KEY. Do not invent keys.
+5. Keep the Grok Bot window open. Saltvoice Local finds it by title (Grok Bot / Grok / Grok Build) and pastes transcribed text into it.
+6. Run run.bat once and keep that console open. First run creates a venv, installs packages, and downloads the Whisper model into %LOCALAPPDATA%\SaltvoiceLocal\models (about 75 MB). Later runs are offline. If ctranslate2 fails, tell me to install the VC++ redistributable, then stop.
+7. Confirm a window titled Saltvoice Local appears at the top of the screen. If not, look on the taskbar or press Ctrl+Alt+H.
+8. Then tell me:
+   - Start: say “Salt open voice over” (also “Salt start voice over” or Ctrl+Alt+G)
+   - Speak a task; it should appear as text in this Grok Bot chat
+   - Stop: say “Salt stop voice over”
+   - Ctrl+Alt+X quits listening; Ctrl+Alt+H shows the overlay
+9. Log file (no secrets): %LOCALAPPDATA%\SaltvoiceLocal\saltvoice-local.log
+
+If something fails, append what you saw to WINDOWS-FEEDBACK.md (create it if missing), commit, and push. Do not print API keys. Do not commit .env files from the other Saltvoice folder.
