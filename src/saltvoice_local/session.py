@@ -6,7 +6,7 @@ import time
 
 from saltvoice_local.audio import AudioBridge
 from saltvoice_local.config import Settings
-from saltvoice_local.phrases import is_sleep_phrase, is_wake_phrase, normalize
+from saltvoice_local.phrases import classify_utterance, normalize
 from saltvoice_local.state import Hub, Phase
 from saltvoice_local.wake import WakeWatcher
 from saltvoice_local.worker import ComputerWorker
@@ -54,22 +54,22 @@ class VoiceSession:
                 self.wake.enter_sleep()
         if value:
             self._last_user_activity = time.monotonic()
-            log.info("armed — local Whisper will paste into Grok Bot")
+            log.info("armed — listening; say Salt go on standby when you are done")
             self.hub.emit(
                 "arm",
                 phase=Phase.LISTENING,
                 armed=True,
-                status_line="Listening. Speak your request. Say Salt stop voice over to stop.",
+                status_line="Listening. Speak a task. Say Salt go on standby when you finish.",
             )
         else:
-            log.info("sleeping — waiting for Salt open voice over")
+            log.info("standby — waiting for Salt wake up")
             self.hub.emit(
                 "arm",
                 phase=Phase.SLEEPING,
                 armed=False,
                 user_text="",
                 assistant_text="",
-                status_line="Sleeping. Waiting for Salt open voice over.",
+                status_line="Standby. Say Salt wake up when you want me to listen.",
             )
 
     async def start_idle(self) -> None:
@@ -83,6 +83,7 @@ class VoiceSession:
                 on_sleep=lambda: self.arm(False),
                 on_utterance=self._on_user_final,
                 on_text=lambda text: self.hub.emit("wake-stt", user_text=text, status_line=f"Heard: {text}"),
+                on_target=self.set_target,
             )
         if self._sleep_task is None:
             self._sleep_task = asyncio.create_task(self._auto_sleep(), name="auto-sleep")
@@ -114,6 +115,12 @@ class VoiceSession:
             if time.monotonic() - self._last_user_activity >= limit:
                 await self.arm(False)
 
+    async def set_target(self, target: str) -> None:
+        self.worker.target = target
+        label = "Grok Bot" if target == "grok" else "the front window"
+        log.info("handoff target: %s", target)
+        self.hub.emit("target", status_line=f"Sending spoken text to {label}.")
+
     async def _on_user_final(self, text: str) -> None:
         now = time.monotonic()
         key = normalize(text)
@@ -122,15 +129,24 @@ class VoiceSession:
         self._last_user_norm = key
         self._last_user_at = now
         self._last_user_activity = now
-        print(f"YOU: {text}", flush=True)
-        log.info("YOU: %s", text)
-        if is_sleep_phrase(text) and self._armed:
+        kind = classify_utterance(text)
+        if kind == "standby":
+            log.info("control (not pasted): %s", text)
             await self.arm(False)
             return
-        if is_wake_phrase(text):
+        if kind == "wake":
+            log.info("control (not pasted): %s", text)
             if not self._armed:
                 await self.arm(True)
             return
+        if kind == "target_grok":
+            await self.set_target("grok")
+            return
+        if kind == "target_here":
+            await self.set_target("here")
+            return
+        print(f"YOU: {text}", flush=True)
+        log.info("YOU: %s", text)
         self.hub.emit("user", phase=Phase.HEARING, user_text=text, status_line=f"You: {text}"[-180:])
         if not self._armed:
             return

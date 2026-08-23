@@ -90,10 +90,12 @@ class GrokBotConfig:
         window_titles: list[str] | None = None,
         prefer: str = "window",
         cli: str = "grok",
+        target: str = "grok",
     ) -> None:
         self.window_titles = [t.lower() for t in (window_titles or ["Grok Bot", "Grok", "Grok Build"])]
         self.prefer = (prefer or "window").lower()
         self.cli = cli or "grok"
+        self.target = (target or "grok").lower()
 
 
 def _configure_winapi() -> None:
@@ -380,6 +382,51 @@ def _focus(hwnd: int) -> int | None:
     return int(previous) if previous else None
 
 
+def _window_title(hwnd: int) -> str:
+    if USER32 is None or not hwnd:
+        return ""
+    length = USER32.GetWindowTextLengthW(hwnd)
+    if length < 1:
+        return ""
+    buf = ctypes.create_unicode_buffer(length + 1)
+    USER32.GetWindowTextW(hwnd, buf, length + 1)
+    return buf.value.strip()
+
+
+def _is_ours(title: str) -> bool:
+    lowered = (title or "").lower()
+    return "saltvoice" in lowered or "grok handsfree" in lowered
+
+
+def _paste_into_hwnd(hwnd: int, title: str, instruction: str, *, restore_previous: bool = True) -> str:
+    previous = _focus(hwnd)
+    time.sleep(0.2)
+    _click_input(hwnd)
+    time.sleep(0.15)
+    method = "type"
+    try:
+        clip = _set_clipboard_text(instruction)
+        method = f"paste/{clip}"
+        _paste_and_enter()
+        log.info("handoff pasted via %s into %r chars=%s", clip, title, len(instruction))
+    except Exception as exc:
+        log.warning("paste failed (%s); typing into %r instead", exc, title)
+        _focus(hwnd)
+        time.sleep(0.12)
+        _click_input(hwnd)
+        time.sleep(0.1)
+        _type_text(instruction)
+        log.info("handoff typed into %r chars=%s", title, len(instruction))
+        method = "type"
+    time.sleep(0.35)
+    _call_topmost(True)
+    if restore_previous and previous and USER32 is not None:
+        prev_title = _window_title(previous).lower()
+        if not _is_ours(prev_title) and "grok" not in prev_title:
+            USER32.SetForegroundWindow(previous)
+    return method
+
+
 def send_to_window(instruction: str, titles: list[str]) -> dict[str, Any]:
     _configure_winapi()
     visible = [(h, t) for h, t in list_windows()]
@@ -397,36 +444,30 @@ def send_to_window(instruction: str, titles: list[str]) -> dict[str, Any]:
     print(f"HANDOFF window: {title}", flush=True)
     _call_topmost(False)
     time.sleep(0.15)
-    previous = _focus(hwnd)
-    time.sleep(0.2)
-    _click_input(hwnd)
-    time.sleep(0.15)
-    method = "type"
-    try:
-        clip = _set_clipboard_text(instruction)
-        method = f"paste/{clip}"
-        _paste_and_enter()
-        log.info("handoff pasted via %s into %r chars=%s", clip, title, len(instruction))
-    except Exception as exc:
-        log.warning("paste failed (%s); typing into Grok Bot instead", exc)
-        _focus(hwnd)
-        time.sleep(0.12)
-        _click_input(hwnd)
-        time.sleep(0.1)
-        _type_text(instruction)
-        log.info("handoff typed into %r chars=%s", title, len(instruction))
-    time.sleep(0.35)
-    _call_topmost(True)
-    if previous and USER32 is not None:
-        prev_title = ""
-        length = USER32.GetWindowTextLengthW(previous)
-        if length > 0:
-            buf = ctypes.create_unicode_buffer(length + 1)
-            USER32.GetWindowTextW(previous, buf, length + 1)
-            prev_title = buf.value.lower()
-        if "saltvoice" not in prev_title and "grok" not in prev_title:
-            USER32.SetForegroundWindow(previous)
+    method = _paste_into_hwnd(hwnd, title, instruction)
     return {"status": "ok", "method": "window", "window": title, "input": method}
+
+
+def send_to_active_window(instruction: str) -> dict[str, Any]:
+    """Paste into the frontmost app (not Saltvoice). For dictation into other programs."""
+    if USER32 is None:
+        return {"status": "error", "error": "Foreground paste is only available on Windows"}
+    _configure_winapi()
+    _call_topmost(False)
+    time.sleep(0.2)
+    hwnd = int(USER32.GetForegroundWindow() or 0)
+    title = _window_title(hwnd)
+    if not hwnd or _is_ours(title):
+        for other, other_title in list_windows():
+            if other != hwnd and not _is_ours(other_title):
+                hwnd, title = other, other_title
+                break
+    if not hwnd or _is_ours(title):
+        return {"status": "error", "error": "No other window is focused. Click the app you want, then speak."}
+    log.info("handoff targeting front window %r hwnd=%s", title, hwnd)
+    print(f"HANDOFF window: {title}", flush=True)
+    method = _paste_into_hwnd(hwnd, title, instruction, restore_previous=False)
+    return {"status": "ok", "method": "foreground", "window": title, "input": method}
 
 
 def send_to_cli(instruction: str, cwd: Path, cli: str = "grok") -> dict[str, Any]:
@@ -461,9 +502,18 @@ def send_instruction(instruction: str, cwd: Path, cfg: GrokBotConfig) -> dict[st
         if os.name != "nt" and cfg.prefer == "window":
             return send_to_cli(text, cwd, cfg.cli)
 
+        if cfg.target in {"here", "foreground", "front", "active"} and os.name == "nt":
+            try:
+                result = send_to_active_window(text)
+            except Exception as exc:
+                log.exception("foreground handoff crashed")
+                result = {"status": "error", "error": str(exc)}
+            if result.get("status") in {"ok", "started"}:
+                return result
+
         errors: list[str] = []
         order = ["window", "cli"] if cfg.prefer != "cli" else ["cli", "window"]
-        result: dict[str, Any] = {"status": "error", "error": "No send method worked"}
+        result = {"status": "error", "error": "No send method worked"}
         for method in order:
             try:
                 if method == "window" and os.name == "nt":

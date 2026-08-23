@@ -1,48 +1,34 @@
 # Saltvoice Local
 
-Standalone, **offline** voice front-end for **Grok Bot** on Windows.
+Standalone, **offline** voice front-end for Windows. Whisper runs on this PC. No API key.
 
-This is **not** the API Saltvoice repo. That project still uses an xAI key and lives in `Saltvoice`. This folder talks to no cloud STT: Whisper runs on your PC, then the same paste path puts the text into Grok Bot.
+## Easy commands (these are never pasted into Grok Bot)
 
-## What it does
+- **Salt wake up** — start listening
+- **Salt go on standby** — stop listening; talk freely, nothing is sent
+- **Salt send to grok** — paste tasks into Grok Bot (default)
+- **Salt send here** — paste into the app in front (browser, editor, Notepad)
 
-1. Listens for **Salt open voice over**.
-2. Transcribes your speech with local Whisper (`tiny.en` by default).
-3. Pastes that text into the **Grok Bot** window.
-4. Stops on **Salt stop voice over**.
+Old phrases still work: “Salt open voice over”, “Salt stop voice over”. Prefer **wake up** / **go on standby** so Grok Bot never sees the word “stop”.
 
-No `.env`. No `XAI_API_KEY`.
-
-## Setup (Windows)
-
-Copy this whole `saltvoice-local` folder to the PC (next to `Saltvoice` is fine). Keep **Grok Bot open**. Do not run API Saltvoice and this at the same time.
+## Setup
 
 ```powershell
 cd C:\Users\justa\saltvoice-local
+git pull
 .\run.bat
 ```
 
-First start downloads the Whisper model into `%LOCALAPPDATA%\SaltvoiceLocal\models` (about 75 MB for `tiny.en`). Later starts are offline.
+First run downloads Whisper. Keep the console open. Overlay title: **Saltvoice Local**.
 
-If `ctranslate2` fails to load, install the [VC++ redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist).
+Do not run this and API Saltvoice at the same time.
 
-## Phrases
+## Other applications
 
-- Start: **Salt open voice over** (also “Salt start voice over”, “hey salt”)
-- Stop: **Salt stop voice over**
-- Backup: **Ctrl+Alt+G**
+Two ways:
 
-## Accuracy vs speed
-
-In `config.yaml`:
-
-```yaml
-stt:
-  model: tiny.en      # fastest
-  # model: base.en    # clearer, slower
-  device: cpu
-  compute_type: int8
-```
+1. **Via Grok Bot (recommended for real work)** — default. You speak a task, it is pasted into Grok Bot, and Grok Bot can open folders, edit files, and drive other apps.
+2. **Straight into the front window** — say **Salt send here**, then wake, then speak. Text is pasted where you are typing. Say **Salt send to grok** to switch back.
 
 ## Logs
 

@@ -51,7 +51,7 @@ class Overlay:
         header.pack(fill="x")
         self.phase_label = tk.Label(
             header,
-            text="SALTVOICE LOCAL  ·  SLEEPING",
+            text="SALTVOICE LOCAL  ·  STANDBY",
             fg=GREEN,
             bg=PANEL,
             font=("Segoe UI", 12, "bold"),
@@ -60,7 +60,7 @@ class Overlay:
         self.phase_label.pack(fill="x", padx=14, pady=(10, 0))
         self.hint = tk.Label(
             header,
-            text='Offline Whisper  ·  Start: “Salt open voice over”  ·  Stop: “Salt stop voice over”',
+            text='Wake: “Salt wake up”  ·  Standby: “Salt go on standby”  ·  never pasted into Grok Bot',
             fg=DIM,
             bg=PANEL,
             font=("Segoe UI", 8),
@@ -111,16 +111,17 @@ class Overlay:
         def apply() -> None:
             phase: Phase = snapshot["phase"]
             color = PHASE_COLOR.get(phase, GREEN)
-            armed = "ON" if snapshot.get("armed") else "SLEEPING"
+            armed = "LISTENING" if snapshot.get("armed") else "STANDBY"
+            label = "LISTENING" if snapshot.get("armed") else "STANDBY"
             self.phase_label.configure(
-                text=f"SALTVOICE LOCAL  ·  {phase.value.upper()}  ·  {armed}",
+                text=f"SALTVOICE LOCAL  ·  {label}",
                 fg=color,
             )
             user = snapshot.get("user_text") or ""
             status = snapshot.get("status_line") or ""
             if not snapshot.get("armed") and phase is Phase.SLEEPING:
-                self.you.configure(text=status[:400] or "Sleeping. Waiting for Salt open voice over.")
-                self.bot.configure(text="Not sending to Grok Bot until you wake Saltvoice Local.")
+                self.you.configure(text=status[:400] or "Standby. Say Salt wake up to listen.")
+                self.bot.configure(text="Not sending to any app until you say Salt wake up.")
                 return
             if user:
                 self.you.configure(text=f"You: {user[:400]}")

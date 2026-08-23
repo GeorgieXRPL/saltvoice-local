@@ -41,8 +41,8 @@ set PYTHONPATH=%~dp0src
 echo.
 echo Saltvoice Local is starting. Offline Whisper — no API key.
 echo Look for a window titled Saltvoice Local at the TOP of the screen.
-echo Start: Salt open voice over
-echo Stop:  Salt stop voice over
+echo Start: Salt wake up
+echo Pause: Salt go on standby  (not sent to Grok Bot)
 echo First run downloads the Whisper model, then it stays on this PC.
 echo Keep this window open.
 echo.

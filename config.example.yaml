@@ -24,6 +24,9 @@ workspace: ""
 
 grok_bot:
   prefer: window
+  # grok = paste into Grok Bot (it can then drive other apps)
+  # here = paste into whichever app is in front (Notepad, browser, etc.)
+  target: grok
   cli: grok
   window_titles:
     - Grok Bot

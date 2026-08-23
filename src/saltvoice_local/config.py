@@ -47,6 +47,7 @@ class Settings:
     )
     grok_prefer: str = "window"
     grok_cli: str = "grok"
+    handoff_target: str = "grok"
     config_path: Path = field(default_factory=lambda: ROOT / "config.yaml")
 
     @property
@@ -102,6 +103,7 @@ def load_settings() -> Settings:
         grok_window_titles=[str(t) for t in titles],
         grok_prefer=str(grok.get("prefer") or "window"),
         grok_cli=str(grok.get("cli") or "grok"),
+        handoff_target=str(grok.get("target") or data.get("handoff_target") or "grok").lower(),
         config_path=local,
     )
 
@@ -110,11 +112,12 @@ def describe_setup(settings: Settings) -> list[str]:
     return [
         "Mode: standalone local Whisper (no xAI / no API key)",
         f"Whisper model: {settings.whisper_model} on {settings.device}/{settings.compute_type}",
-        "Speech path: microphone → local text → paste into Grok Bot",
+        "Speech path: microphone → local text → paste into Grok Bot (or the front window)",
         f"Grok Bot windows: {', '.join(settings.grok_window_titles)}",
+        f"Default target: {settings.handoff_target}",
         f"Workspace: {settings.workspace_path}"
         + (" (exists)" if settings.workspace_path.exists() else " (folder missing)"),
-        "Start: Salt open voice over",
-        "Stop: Salt stop voice over",
+        "Wake: Salt wake up",
+        "Standby: Salt go on standby  (never pasted into Grok Bot)",
         f"Python: {sys.version.split()[0]}",
     ]

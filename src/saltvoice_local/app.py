@@ -62,10 +62,11 @@ def _banner() -> None:
     print("======== SALTVOICE LOCAL ========", flush=True)
     print("Offline. No API key. Whisper runs on this PC.", flush=True)
     print("Look for a window titled  Saltvoice Local  at the TOP of the screen.", flush=True)
-    print("Start:  Salt open voice over", flush=True)
-    print("Stop:   Salt stop voice over", flush=True)
+    print("Start:  Salt wake up", flush=True)
+    print("Pause:  Salt go on standby   (this is NOT sent to Grok Bot)", flush=True)
+    print("Also:   Salt send to grok    or    Salt send here", flush=True)
     print("Or press Ctrl+Alt+G.  Ctrl+Alt+H shows the overlay.  Ctrl+Alt+X quits.", flush=True)
-    print("Keep Grok Bot open. Spoken text is pasted into it.", flush=True)
+    print("Default: spoken tasks are pasted into Grok Bot.", flush=True)
     print("This black window is only logs. Do not close it.", flush=True)
     print("=================================", flush=True)
     print("", flush=True)
@@ -73,9 +74,11 @@ def _banner() -> None:
 
 def _console_mirror(_event: str, snapshot: dict) -> None:
     if _event == "arm" and snapshot.get("armed"):
-        safe_print("LISTENING. Speak a task for Grok Bot.", flush=True)
+        safe_print("LISTENING. Speak a task. Standby: Salt go on standby", flush=True)
     if _event == "arm" and not snapshot.get("armed"):
-        safe_print("STOPPED. Waiting for: Salt open voice over", flush=True)
+        safe_print("STANDBY. Waiting for: Salt wake up", flush=True)
+    if _event == "target":
+        safe_print(f"TARGET: {snapshot.get('status_line')}", flush=True)
     if _event == "wake-stt" and snapshot.get("user_text") and snapshot.get("armed"):
         safe_print(f"HEARD: {snapshot['user_text']}", flush=True)
     if _event in {"handoff"}:
@@ -153,7 +156,7 @@ def run(*, check: bool = False) -> int:
     try:
         audio.start()
         audio.mic.arm(True)
-        print("Microphone is on and waiting for: Salt open voice over", flush=True)
+        print("Microphone is on and waiting for: Salt wake up", flush=True)
     except Exception as exc:
         hub.emit("error", phase=Phase.ERROR, status_line=f"Microphone failed: {exc}")
         log.exception("audio start failed")
@@ -166,6 +169,7 @@ def run(*, check: bool = False) -> int:
         prefer=settings.grok_prefer,
         cli=settings.grok_cli,
         workspace=settings.workspace_path,
+        target=settings.handoff_target,
     )
 
     def _make_session() -> None:
@@ -235,7 +239,7 @@ def run(*, check: bool = False) -> int:
     hub.emit(
         "ready",
         phase=Phase.SLEEPING,
-        status_line="Sleeping. Say Salt open voice over, then give Grok Bot a task.",
+        status_line="Standby. Say Salt wake up, then give a task.",
     )
     if overlay is not None:
         try:

@@ -6,7 +6,7 @@ import time
 from collections.abc import Callable, Awaitable
 
 from saltvoice_local.pcm import SAMPLE_RATE, rms_int16
-from saltvoice_local.phrases import is_sleep_phrase, is_wake_phrase, normalize
+from saltvoice_local.phrases import classify_utterance, normalize
 from saltvoice_local.stt import transcribe_pcm
 
 log = logging.getLogger("saltvoice_local")
@@ -20,12 +20,14 @@ class WakeWatcher:
         on_sleep: Callable[[], Awaitable[None]],
         on_utterance: Callable[[str], Awaitable[None]] | None = None,
         on_text: Callable[[str], None] | None = None,
+        on_target: Callable[[str], Awaitable[None]] | None = None,
     ) -> None:
         self.language = language
         self.on_wake = on_wake
         self.on_sleep = on_sleep
         self.on_utterance = on_utterance
         self.on_text = on_text
+        self.on_target = on_target
         self.enabled = True
         self.listening = False
         self._chunks: list[bytes] = []
@@ -101,21 +103,26 @@ class WakeWatcher:
                 return
             self._last_norm = key
             self._last_norm_at = now
-            wake = is_wake_phrase(text)
-            sleep = is_sleep_phrase(text)
-            if sleep:
-                log.info("stt: %r sleep=True — stopping", text)
+            kind = classify_utterance(text)
+            if kind == "standby":
+                log.info("stt: %r standby — not sending to any app", text)
                 self.enter_sleep()
-                if self.on_text:
-                    self.on_text(text)
                 await self.on_sleep()
                 return
-            if wake:
-                log.info("stt: %r wake=True — starting", text)
+            if kind == "wake":
+                log.info("stt: %r wake — listening", text)
                 self.enter_listen()
-                if self.on_text:
-                    self.on_text(text)
                 await self.on_wake()
+                return
+            if kind == "target_grok":
+                log.info("stt: %r → send to Grok Bot", text)
+                if self.on_target:
+                    await self.on_target("grok")
+                return
+            if kind == "target_here":
+                log.info("stt: %r → send to front window", text)
+                if self.on_target:
+                    await self.on_target("here")
                 return
             if self.listening and self.on_utterance:
                 if self.on_text:
