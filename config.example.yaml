@@ -1,0 +1,31 @@
+# Copy to config.yaml or let the app create one on first run.
+# No API keys. Speech is transcribed on this PC with Whisper.
+
+listen_mode: wake
+auto_sleep_minutes: 8
+
+stt:
+  # tiny.en is fastest. base.en is more accurate. small.en is slower/better.
+  model: tiny.en
+  device: cpu
+  compute_type: int8
+  language: en
+
+hotkeys:
+  toggle_listen: "<ctrl>+<alt>+g"
+  hold_talk: "<ctrl>+<cmd>"
+  cancel: "<ctrl>+<alt>+x"
+  toggle_overlay: "<ctrl>+<alt>+h"
+
+overlay:
+  show_on_start: true
+
+workspace: ""
+
+grok_bot:
+  prefer: window
+  cli: grok
+  window_titles:
+    - Grok Bot
+    - Grok
+    - Grok Build
