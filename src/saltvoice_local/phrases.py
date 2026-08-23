@@ -91,11 +91,36 @@ FILLERS = frozenset(
         "thank you",
         "hi",
         "hello",
+        "soat",
+        "sot",
+        "huh",
+    }
+)
+
+# tiny.en often hears "salt" as these. Map them before matching commands.
+SALT_MISHEARS = frozenset(
+    {
+        "sol",
+        "saul",
+        "assault",
+        "salts",
+        "soat",
+        "sult",
+        "sault",
+        "slt",
+        "soed",
+        "sawt",
+        "soult",
+        "psalt",
+        "soalt",
+        "sot",
+        "sal",
+        "zalt",
+        "saults",
     }
 )
 
 _VOICEOVER = re.compile(r"voice[\s\-]*over", re.I)
-_SALT_ALIAS = re.compile(r"\b(sol|saul|assault|salts)\b")
 _STANDBY_ALIAS = re.compile(r"\bstand\s+by\b")
 _WAKE_GLUE = frozenset(
     {
@@ -119,6 +144,30 @@ _WAKE_GLUE = frozenset(
 )
 
 
+def _map_salt_words(n: str) -> str:
+    words = n.split()
+    commandish = any(
+        w in words for w in ("wake", "wakeup", "standby", "voice", "listen", "sleep", "stop", "up")
+    )
+    out: list[str] = []
+    i = 0
+    while i < len(words):
+        nxt = words[i + 1] if i + 1 < len(words) else ""
+        if words[i] == "so" and nxt in {"at", "alt", "olt", "ought", "ot"}:
+            out.append("salt")
+            i += 2
+            continue
+        w = words[i]
+        if w in SALT_MISHEARS:
+            out.append("salt")
+        elif w in {"soap", "sought", "soul", "sold"} and commandish:
+            out.append("salt")
+        else:
+            out.append(w)
+        i += 1
+    return " ".join(out)
+
+
 def normalize(text: str) -> str:
     lowered = text.lower().replace("'", "")
     lowered = _VOICEOVER.sub("voice over", lowered)
@@ -126,10 +175,8 @@ def normalize(text: str) -> str:
     lowered = re.sub(r"\basleep\b", "sleep", lowered)
     lowered = re.sub(r"[^a-z0-9\s]+", " ", lowered)
     lowered = re.sub(r"\s+", " ", lowered).strip()
-    lowered = _SALT_ALIAS.sub("salt", lowered)
-    # tiny.en: "soap" ≈ salt, "step" ≈ stop, only in command-like lines
+    lowered = _map_salt_words(lowered)
     if any(k in lowered for k in ("voice", "wake", "standby", "sleep", "stop", "salt")):
-        lowered = re.sub(r"\bsoap\b", "salt", lowered)
         lowered = re.sub(r"\bstep\b", "stop", lowered)
     return lowered
 
@@ -154,6 +201,21 @@ def is_filler_utterance(text: str) -> bool:
     if not n or n in FILLERS:
         return True
     if len(n) < 4:
+        return True
+    return False
+
+
+def is_incomplete_utterance(text: str) -> bool:
+    """A chopped first syllable of a command, not a real task."""
+    if is_filler_utterance(text):
+        return True
+    n = normalize(text)
+    words = n.split()
+    if not words:
+        return True
+    if len(words) == 1 and words[0] in {"salt", "wake", "standby", "voice", "listen"}:
+        return True
+    if n in {"salt so", "so salt", "hey salt so"}:
         return True
     return False
 

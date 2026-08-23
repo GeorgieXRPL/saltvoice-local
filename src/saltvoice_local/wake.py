@@ -6,7 +6,13 @@ import time
 from collections.abc import Callable, Awaitable
 
 from saltvoice_local.pcm import SAMPLE_RATE, rms_int16
-from saltvoice_local.phrases import classify_utterance, is_filler_utterance, normalize, remainder_after_wake
+from saltvoice_local.phrases import (
+    classify_utterance,
+    is_filler_utterance,
+    is_incomplete_utterance,
+    normalize,
+    remainder_after_wake,
+)
 from saltvoice_local.stt import transcribe_pcm
 
 log = logging.getLogger("saltvoice_local")
@@ -38,6 +44,8 @@ class WakeWatcher:
         self._last_norm = ""
         self._last_norm_at = 0.0
         self._last_standby_note = 0.0
+        self._pending = ""
+        self._pending_at = 0.0
 
     def reset(self) -> None:
         self._chunks.clear()
@@ -46,18 +54,23 @@ class WakeWatcher:
     def enter_sleep(self) -> None:
         self.listening = False
         self.reset()
+        self._pending = ""
         self._mute_until = time.monotonic() + 1.2
 
     def enter_listen(self) -> None:
         self.listening = True
         self.reset()
+        self._pending = ""
         self._mute_until = 0.0
 
     def _max_seconds(self) -> float:
         return 18.0 if self.listening else 3.8
 
     def _voice_floor(self) -> float:
-        return 0.016 if self.listening else 0.02
+        return 0.011 if self.listening else 0.014
+
+    def _hangover(self) -> float:
+        return 0.85 if self.listening else 0.7
 
     async def feed(self, pcm: bytes) -> None:
         if not self.enabled:
@@ -79,7 +92,7 @@ class WakeWatcher:
             return
         if not self._speaking:
             return
-        if now - self._last_voice < 0.45:
+        if now - self._last_voice < self._hangover():
             self._chunks.append(pcm)
             return
         if self._busy:
@@ -101,8 +114,17 @@ class WakeWatcher:
             text = await asyncio.to_thread(transcribe_pcm, blob, SAMPLE_RATE, self.language, min_rms)
             if not text:
                 return
-            key = normalize(text)
             now = time.monotonic()
+            if self._pending and now - self._pending_at < 2.4:
+                text = f"{self._pending} {text}".strip()
+                log.info("stt joined fragment → %r", text)
+            self._pending = ""
+            if is_incomplete_utterance(text):
+                self._pending = text
+                self._pending_at = now
+                log.info("stt: %r holding (waiting for the rest of the command)", text)
+                return
+            key = normalize(text)
             if key and key == self._last_norm and now - self._last_norm_at < 4:
                 return
             self._last_norm = key
@@ -132,7 +154,7 @@ class WakeWatcher:
                 if self.on_target:
                     await self.on_target("here")
                 return
-            if is_filler_utterance(text):
+            if is_filler_utterance(text) or is_incomplete_utterance(text):
                 if self.listening:
                     log.info("stt: %r filler — not pasted", text)
                 return

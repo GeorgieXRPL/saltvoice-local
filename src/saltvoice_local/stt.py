@@ -56,13 +56,20 @@ def transcribe_pcm(
     if audio.size < WHISPER_RATE // 4:
         return ""
     try:
-        segments, _info = _model.transcribe(
-            audio,
+        kwargs = dict(
             language=language or "en",
-            beam_size=1,
-            vad_filter=True,
+            beam_size=3,
+            vad_filter=False,
             without_timestamps=True,
+            condition_on_previous_text=False,
+            initial_prompt="Salt wake up. Salt go on standby. Salt send to grok.",
         )
+        try:
+            segments, _info = _model.transcribe(audio, **kwargs)
+        except TypeError:
+            kwargs.pop("condition_on_previous_text", None)
+            kwargs.pop("initial_prompt", None)
+            segments, _info = _model.transcribe(audio, **kwargs)
         text = " ".join(seg.text.strip() for seg in segments if getattr(seg, "text", None)).strip()
         return text
     except Exception as exc:

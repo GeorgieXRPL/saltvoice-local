@@ -6,7 +6,7 @@ import time
 
 from saltvoice_local.audio import AudioBridge
 from saltvoice_local.config import Settings
-from saltvoice_local.phrases import classify_utterance, is_filler_utterance, normalize, remainder_after_wake
+from saltvoice_local.phrases import classify_utterance, is_filler_utterance, is_incomplete_utterance, normalize, remainder_after_wake
 from saltvoice_local.state import Hub, Phase
 from saltvoice_local.wake import WakeWatcher
 from saltvoice_local.worker import ComputerWorker
@@ -148,7 +148,7 @@ class VoiceSession:
         if kind == "target_here":
             await self.set_target("here")
             return
-        if is_filler_utterance(text):
+        if is_filler_utterance(text) or is_incomplete_utterance(text):
             log.info("filler (not pasted): %s", text)
             return
         print(f"YOU: {text}", flush=True)
