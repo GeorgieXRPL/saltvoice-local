@@ -8,7 +8,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from saltvoice_local.pcm import resample_pcm16, rms_int16
-from saltvoice_local.phrases import classify_utterance, is_sleep_phrase, is_wake_phrase
+from saltvoice_local.phrases import (
+    classify_utterance,
+    is_filler_utterance,
+    is_sleep_phrase,
+    is_wake_phrase,
+    remainder_after_wake,
+)
 from saltvoice_local.state import Hub, Phase
 
 
@@ -37,6 +43,18 @@ def test_phrases() -> None:
     assert classify_utterance("Stop, salt, voiceover") == "standby"
     assert classify_utterance("stop salt") == "standby"
     assert classify_utterance("Salt, open the downloads") == "task"
+    # Real Windows log lines
+    assert classify_utterance("the pocket open voiceover.") == "wake"
+    assert classify_utterance("Wake up, salt.") == "wake"
+    assert classify_utterance("Salt cut asleep.") == "standby"
+    assert classify_utterance("Soap, step voiceover.") == "standby"
+    assert classify_utterance("Stop voiceover.") == "standby"
+    assert classify_utterance("Turn up the logs for the latest salt voice over AI.") == "task"
+    assert classify_utterance("Can you hear me?") == "task"
+    assert is_filler_utterance("So.")
+    assert is_filler_utterance("All right.")
+    assert not is_filler_utterance("Can you hear me?")
+    assert remainder_after_wake("Salt wake up open the download folder") == "open the download folder"
 
 
 def test_hub() -> None:

@@ -6,7 +6,7 @@ import time
 from collections.abc import Callable, Awaitable
 
 from saltvoice_local.pcm import SAMPLE_RATE, rms_int16
-from saltvoice_local.phrases import classify_utterance, normalize
+from saltvoice_local.phrases import classify_utterance, is_filler_utterance, normalize, remainder_after_wake
 from saltvoice_local.stt import transcribe_pcm
 
 log = logging.getLogger("saltvoice_local")
@@ -45,7 +45,7 @@ class WakeWatcher:
     def enter_sleep(self) -> None:
         self.listening = False
         self.reset()
-        self._mute_until = time.monotonic() + 2.0
+        self._mute_until = time.monotonic() + 2.5
 
     def enter_listen(self) -> None:
         self.listening = True
@@ -56,7 +56,7 @@ class WakeWatcher:
         return 18.0 if self.listening else 3.8
 
     def _voice_floor(self) -> float:
-        return 0.016 if self.listening else 0.032
+        return 0.016 if self.listening else 0.05
 
     async def feed(self, pcm: bytes) -> None:
         if not self.enabled:
@@ -86,15 +86,18 @@ class WakeWatcher:
         blob = b"".join(self._chunks)
         self.reset()
         duration = len(blob) / (SAMPLE_RATE * 2)
-        min_dur = 0.35 if self.listening else 0.7
+        min_dur = 0.35 if self.listening else 1.15
         if duration < min_dur or duration > cap + 0.4:
             return
+        need = 0.012 if self.listening else 0.04
+        if rms_int16(blob) < need:
+            return
         self._busy = True
-        asyncio.create_task(self._handle_blob(blob, duration), name="stt-utt")
+        asyncio.create_task(self._handle_blob(blob, duration, need), name="stt-utt")
 
-    async def _handle_blob(self, blob: bytes, duration: float) -> None:
+    async def _handle_blob(self, blob: bytes, duration: float, min_rms: float) -> None:
         try:
-            text = await asyncio.to_thread(transcribe_pcm, blob, SAMPLE_RATE, self.language)
+            text = await asyncio.to_thread(transcribe_pcm, blob, SAMPLE_RATE, self.language, min_rms)
             if not text:
                 return
             key = normalize(text)
@@ -113,6 +116,10 @@ class WakeWatcher:
                 log.info("stt: %r wake — listening", text)
                 self.enter_listen()
                 await self.on_wake()
+                rest = remainder_after_wake(text)
+                if rest and self.on_utterance:
+                    log.info("stt: %r wake+task", rest)
+                    await self.on_utterance(rest)
                 return
             if kind == "target_grok":
                 log.info("stt: %r → send to Grok Bot", text)
@@ -123,6 +130,9 @@ class WakeWatcher:
                 log.info("stt: %r → send to front window", text)
                 if self.on_target:
                     await self.on_target("here")
+                return
+            if is_filler_utterance(text):
+                log.info("stt: %r filler — not pasted", text)
                 return
             if self.listening and self.on_utterance:
                 if self.on_text:

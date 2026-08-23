@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from saltvoice_local.grok_bot import GrokBotConfig, send_instruction
-from saltvoice_local.phrases import classify_utterance, normalize
+from saltvoice_local.phrases import classify_utterance, is_filler_utterance, normalize
 
 log = logging.getLogger("saltvoice_local")
 
@@ -27,6 +27,9 @@ class ComputerWorker:
         if classify_utterance(cleaned) != "task":
             log.info("blocked control phrase from handoff: %s", cleaned)
             return {"status": "ok", "method": "control-skipped"}
+        if is_filler_utterance(cleaned):
+            log.info("blocked filler from handoff: %s", cleaned)
+            return {"status": "ok", "method": "filler-skipped"}
         key = normalize(cleaned)
         now = time.monotonic()
         if key and key == self._last_sent and now - self._last_sent_at < 8:

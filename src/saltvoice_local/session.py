@@ -6,7 +6,7 @@ import time
 
 from saltvoice_local.audio import AudioBridge
 from saltvoice_local.config import Settings
-from saltvoice_local.phrases import classify_utterance, normalize
+from saltvoice_local.phrases import classify_utterance, is_filler_utterance, normalize, remainder_after_wake
 from saltvoice_local.state import Hub, Phase
 from saltvoice_local.wake import WakeWatcher
 from saltvoice_local.worker import ComputerWorker
@@ -138,12 +138,18 @@ class VoiceSession:
             log.info("control (not pasted): %s", text)
             if not self._armed:
                 await self.arm(True)
+            rest = remainder_after_wake(text)
+            if rest:
+                await self._on_user_final(rest)
             return
         if kind == "target_grok":
             await self.set_target("grok")
             return
         if kind == "target_here":
             await self.set_target("here")
+            return
+        if is_filler_utterance(text):
+            log.info("filler (not pasted): %s", text)
             return
         print(f"YOU: {text}", flush=True)
         log.info("YOU: %s", text)

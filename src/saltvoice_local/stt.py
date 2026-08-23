@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import threading
 from pathlib import Path
 
@@ -30,6 +31,8 @@ def load_model(name: str, device: str, compute_type: str, download_root: Path | 
         if download_root is not None:
             download_root.mkdir(parents=True, exist_ok=True)
             kwargs["download_root"] = str(download_root)
+        os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+        os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
         log.info("loading local Whisper %s (%s/%s)…", name, device, compute_type)
         _model = WhisperModel(name, **kwargs)
         _model_name = key
@@ -37,10 +40,15 @@ def load_model(name: str, device: str, compute_type: str, download_root: Path | 
         return _model
 
 
-def transcribe_pcm(pcm: bytes, sample_rate: int = 24000, language: str = "en") -> str:
+def transcribe_pcm(
+    pcm: bytes,
+    sample_rate: int = 24000,
+    language: str = "en",
+    min_rms: float = 0.008,
+) -> str:
     if not pcm or _model is None:
         return ""
-    if rms_int16(pcm) < 0.008:
+    if rms_int16(pcm) < min_rms:
         return ""
     if sample_rate != WHISPER_RATE:
         pcm = resample_pcm16(pcm, sample_rate, WHISPER_RATE)

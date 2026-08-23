@@ -15,6 +15,17 @@ from saltvoice_local.state import Hub, Phase
 log = logging.getLogger("saltvoice_local")
 
 
+class _DropWhisperSpam(logging.Filter):
+    _DROP = ("Processing audio with duration", "VAD filter removed")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            msg = record.getMessage()
+        except Exception:
+            return True
+        return not any(s in msg for s in self._DROP)
+
+
 def _setup_logging() -> None:
     folder = app_data_dir()
     folder.mkdir(parents=True, exist_ok=True)
@@ -27,6 +38,22 @@ def _setup_logging() -> None:
             logging.StreamHandler(sys.stdout),
         ],
     )
+    quiet = _DropWhisperSpam()
+    logging.getLogger().addFilter(quiet)
+    for name in (
+        "faster_whisper",
+        "faster_whisper.transcribe",
+        "ctranslate2",
+        "huggingface_hub",
+        "huggingface_hub.utils",
+        "httpx",
+        "httpcore",
+        "urllib3",
+        "filelock",
+    ):
+        noisy = logging.getLogger(name)
+        noisy.setLevel(logging.WARNING)
+        noisy.addFilter(quiet)
     log.info("log file: %s", logfile)
     print(f"LOG FILE: {logfile}", flush=True)
 
@@ -132,6 +159,8 @@ def run(*, check: bool = False) -> int:
         from saltvoice_local.grok_bot import set_topmost_hook
 
         set_topmost_hook(overlay.set_topmost)
+        print("OVERLAY ON: look for a window titled  Saltvoice Local  at the top of the screen.", flush=True)
+        print("If you do not see it, press Ctrl+Alt+H or check the taskbar.", flush=True)
         if not settings.overlay.show_on_start:
             overlay.hide()
     except Exception as exc:
