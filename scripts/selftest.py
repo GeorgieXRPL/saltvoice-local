@@ -71,6 +71,14 @@ def test_phrases() -> None:
     assert is_incomplete_utterance("so")
     assert is_incomplete_utterance("So.")
     assert not is_incomplete_utterance("Open the download folder")
+    from saltvoice_local.phrases import set_command_aliases, set_user_corrections
+
+    set_user_corrections({"bork": "salt"})
+    assert classify_utterance("bork wake up") == "wake"
+    set_user_corrections({})
+    set_command_aliases({"thats enough": "standby"})
+    assert classify_utterance("that's enough") == "standby"
+    set_command_aliases({})
 
 
 def test_hub() -> None:

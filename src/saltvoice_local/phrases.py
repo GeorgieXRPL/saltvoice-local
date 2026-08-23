@@ -120,6 +120,50 @@ SALT_MISHEARS = frozenset(
     }
 )
 
+_user_corrections: dict[str, str] = {}
+_command_aliases: dict[str, str] = {}
+
+
+def set_user_corrections(mapping: dict[str, str] | None) -> None:
+    """Dialect / accent replacements from brain.yaml (heard → meant)."""
+    global _user_corrections
+    cleaned: dict[str, str] = {}
+    for key, value in (mapping or {}).items():
+        heard = re.sub(r"\s+", " ", re.sub(r"[^a-z0-9\s]+", " ", str(key).lower().replace("'", ""))).strip()
+        meant = str(value or "").strip()
+        if heard and meant:
+            cleaned[heard] = meant.lower()
+    _user_corrections = cleaned
+
+
+def set_command_aliases(mapping: dict[str, str] | None) -> None:
+    """User phrases that mean wake / standby / send here / send to grok."""
+    global _command_aliases
+    allowed = {"wake", "standby", "target_grok", "target_here"}
+    cleaned: dict[str, str] = {}
+    for key, value in (mapping or {}).items():
+        phrase = re.sub(r"\s+", " ", re.sub(r"[^a-z0-9\s]+", " ", str(key).lower().replace("'", ""))).strip()
+        kind = str(value or "").strip().lower().replace(" ", "_")
+        if kind in {"sleep", "stop", "pause"}:
+            kind = "standby"
+        if kind in {"listen", "start"}:
+            kind = "wake"
+        if phrase and kind in allowed:
+            cleaned[phrase] = kind
+    _command_aliases = cleaned
+
+
+def _apply_user_corrections(n: str) -> str:
+    for heard, meant in sorted(_user_corrections.items(), key=lambda kv: len(kv[0]), reverse=True):
+        if not heard:
+            continue
+        if " " in heard:
+            n = n.replace(heard, meant)
+        else:
+            n = re.sub(rf"\b{re.escape(heard)}\b", meant, n)
+    return n
+
+
 _VOICEOVER = re.compile(r"voice[\s\-]*over", re.I)
 _STANDBY_ALIAS = re.compile(r"\bstand\s+by\b")
 _WAKE_GLUE = frozenset(
@@ -185,6 +229,7 @@ def normalize(text: str) -> str:
     lowered = re.sub(r"\basleep\b", "sleep", lowered)
     lowered = re.sub(r"[^a-z0-9\s]+", " ", lowered)
     lowered = re.sub(r"\s+", " ", lowered).strip()
+    lowered = _apply_user_corrections(lowered)
     lowered = _map_salt_words(lowered)
     if any(k in lowered for k in ("voice", "wake", "standby", "sleep", "stop", "salt")):
         lowered = re.sub(r"\bstep\b", "stop", lowered)
@@ -308,6 +353,9 @@ def remainder_after_wake(text: str) -> str:
 
 def classify_utterance(text: str) -> str:
     """wake | standby | target_grok | target_here | task"""
+    n = normalize(text)
+    if n in _command_aliases:
+        return _command_aliases[n]
     if is_standby_phrase(text):
         return "standby"
     if is_target_grok_phrase(text):

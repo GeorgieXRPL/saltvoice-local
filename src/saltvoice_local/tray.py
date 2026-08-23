@@ -22,14 +22,18 @@ def start_tray(
     on_overlay: Callable[[], None],
     on_quit: Callable[[], None],
     on_open_config: Callable[[], None],
+    on_open_brain: Callable[[], None] | None = None,
 ) -> pystray.Icon:
-    menu = pystray.Menu(
+    items = [
         pystray.MenuItem("Talk / stop (Ctrl+Alt+G)", lambda: on_toggle()),
         pystray.MenuItem("Cancel (Ctrl+Alt+X)", lambda: on_cancel()),
         pystray.MenuItem("Show Saltvoice Local overlay", lambda: on_overlay()),
         pystray.MenuItem("Open config", lambda: on_open_config()),
-        pystray.MenuItem("Quit", lambda: on_quit()),
-    )
+    ]
+    if on_open_brain:
+        items.append(pystray.MenuItem("Open memory (brain.yaml)", lambda: on_open_brain()))
+    items.append(pystray.MenuItem("Quit", lambda: on_quit()))
+    menu = pystray.Menu(*items)
     icon = pystray.Icon("saltvoice-local", _icon_image(), "Saltvoice Local", menu)
     thread = threading.Thread(target=icon.run, name="tray", daemon=True)
     thread.start()

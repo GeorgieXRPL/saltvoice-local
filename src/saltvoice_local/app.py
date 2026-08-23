@@ -142,6 +142,7 @@ def run(*, check: bool = False) -> int:
         return 0
 
     from saltvoice_local.audio import AudioBridge
+    from saltvoice_local.brain import Brain, brain_path
     from saltvoice_local.hotkeys import HotkeyListener
     from saltvoice_local.overlay import Overlay
     from saltvoice_local.session import VoiceSession
@@ -152,10 +153,16 @@ def run(*, check: bool = False) -> int:
     _banner()
     hub = Hub()
     hub.subscribe(_console_mirror)
+    brain = Brain(brain_path())
+    print(f"MEMORY FILE: {brain.path}", flush=True)
 
     overlay = None
     try:
-        overlay = Overlay(hub)
+        overlay = Overlay(
+            hub,
+            on_teach=lambda heard, meant: brain.add_correction(heard, meant),
+            on_open_brain=lambda: _open_path(brain.path),
+        )
         from saltvoice_local.grok_bot import set_topmost_hook
 
         set_topmost_hook(overlay.set_topmost)
@@ -202,7 +209,7 @@ def run(*, check: bool = False) -> int:
     )
 
     def _make_session() -> None:
-        session_holder["s"] = VoiceSession(settings, hub, audio, worker)
+        session_holder["s"] = VoiceSession(settings, hub, audio, worker, brain=brain)
         ready.set()
 
     loop.call_soon_threadsafe(_make_session)
@@ -213,6 +220,12 @@ def run(*, check: bool = False) -> int:
 
     def call(coro) -> None:
         asyncio.run_coroutine_threadsafe(coro, loop)
+
+    if overlay is not None:
+        overlay.on_wake = lambda: call(session.arm(True))
+        overlay.on_standby = lambda: call(session.arm(False))
+        overlay.on_teach = lambda heard, meant: brain.add_correction(heard, meant)
+        overlay.on_open_brain = lambda: _open_path(brain.path)
 
     def toggle() -> None:
         call(session.toggle())
@@ -249,6 +262,7 @@ def run(*, check: bool = False) -> int:
         on_overlay=toggle_overlay,
         on_quit=quit_app,
         on_open_config=lambda: _open_path(settings.config_path),
+        on_open_brain=lambda: _open_path(brain.path),
     )
     listener = HotkeyListener(
         settings.hotkeys,
@@ -269,6 +283,7 @@ def run(*, check: bool = False) -> int:
         "ready",
         phase=Phase.SLEEPING,
         status_line="Standby. Say Salt wake up, then give a task.",
+        target=settings.handoff_target,
     )
     if overlay is not None:
         try:

@@ -23,11 +23,13 @@ class VoiceSession:
         hub: Hub,
         audio: AudioBridge | None,
         worker: ComputerWorker,
+        brain=None,
     ) -> None:
         self.settings = settings
         self.hub = hub
         self.audio = audio
         self.worker = worker
+        self.brain = brain
         self._armed = False
         self._stop: asyncio.Event | None = None
         self._pump_task: asyncio.Task | None = None
@@ -60,6 +62,7 @@ class VoiceSession:
                 phase=Phase.LISTENING,
                 armed=True,
                 status_line="Listening. Speak a task. Say Salt go on standby when you finish.",
+                target=self.worker.target,
             )
         else:
             log.info("standby — not pasting; still listening for Salt wake up")
@@ -70,6 +73,7 @@ class VoiceSession:
                 user_text="",
                 assistant_text="",
                 status_line="Standby. Say Salt wake up when you want me to listen.",
+                target=self.worker.target,
             )
 
     async def start_idle(self) -> None:
@@ -119,7 +123,7 @@ class VoiceSession:
         self.worker.target = target
         label = "Grok Bot" if target == "grok" else "the front window"
         log.info("handoff target: %s", target)
-        self.hub.emit("target", status_line=f"Sending spoken text to {label}.")
+        self.hub.emit("target", target=target, status_line=f"Sending spoken text to {label}.")
 
     async def _on_user_final(self, text: str) -> None:
         now = time.monotonic()
@@ -151,6 +155,11 @@ class VoiceSession:
         if is_filler_utterance(text) or is_incomplete_utterance(text):
             log.info("filler (not pasted): %s", text)
             return
+        if self.brain is not None:
+            expanded = self.brain.expand_shortcut(text)
+            if expanded:
+                log.info("shortcut %r → %r", text, expanded)
+                text = expanded
         print(f"YOU: {text}", flush=True)
         log.info("YOU: %s", text)
         self.hub.emit("user", phase=Phase.HEARING, user_text=text, status_line=f"You: {text}"[-180:])
