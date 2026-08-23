@@ -111,7 +111,6 @@ class Overlay:
         def apply() -> None:
             phase: Phase = snapshot["phase"]
             color = PHASE_COLOR.get(phase, GREEN)
-            armed = "LISTENING" if snapshot.get("armed") else "STANDBY"
             label = "LISTENING" if snapshot.get("armed") else "STANDBY"
             self.phase_label.configure(
                 text=f"SALTVOICE LOCAL  ·  {label}",

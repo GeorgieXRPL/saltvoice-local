@@ -33,6 +33,10 @@ def test_phrases() -> None:
     assert is_sleep_phrase("salt stop")
     assert not is_wake_phrase("please pass the salt")
     assert classify_utterance("Salt stop voice over") == "standby"
+    assert classify_utterance("stop salt voice over") == "standby"
+    assert classify_utterance("Stop, salt, voiceover") == "standby"
+    assert classify_utterance("stop salt") == "standby"
+    assert classify_utterance("Salt, open the downloads") == "task"
 
 
 def test_hub() -> None:

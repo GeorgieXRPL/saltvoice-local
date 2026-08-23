@@ -30,7 +30,9 @@ STANDBY_PHRASES = (
     "salt pause",
     "salt quiet",
     "salt stop voice over",
+    "stop salt voice over",
     "stop voice over",
+    "salt voice over stop",
     "salt close voice over",
     "salt turn voice over off",
     "turn voice over off",
@@ -43,6 +45,7 @@ STANDBY_PHRASES = (
     "thats all salt",
     "salt turn off",
     "salt stop",
+    "stop salt",
 )
 
 TARGET_GROK_PHRASES = (
@@ -85,11 +88,18 @@ def is_standby_phrase(text: str) -> bool:
     if _has_any(n, STANDBY_PHRASES):
         return True
     words = n.split()
-    if "salt" in words and "standby" in words:
+    tokens = set(words)
+    if "salt" not in tokens:
+        return False
+    if "standby" in tokens or tokens & {"pause", "quiet", "sleep"}:
         return True
-    if "salt" in words and any(w in words for w in ("pause", "quiet", "sleep")):
+    # Any order: "stop salt voice over", "salt, stop, voiceover"
+    if tokens & {"stop", "close"} and ("voice" in tokens or "voiceover" in tokens):
         return True
-    return "salt" in words and any(w in words for w in ("stop", "close")) and "voice" in words
+    # Short "stop salt" / "salt stop" — never paste the word stop into Grok Bot
+    if tokens & {"stop", "close"} and len(words) <= 5:
+        return True
+    return False
 
 
 def is_sleep_phrase(text: str) -> bool:
