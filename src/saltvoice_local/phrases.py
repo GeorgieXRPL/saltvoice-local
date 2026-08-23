@@ -166,10 +166,14 @@ def is_standby_phrase(text: str) -> bool:
         return True
     words = n.split()
     tokens = set(words)
+    # Whisper often drops "Salt". Bare "on standby" / "go on standby" is still a command.
+    if "standby" in tokens:
+        extra = [w for w in words if w not in {"salt", "go", "on", "standby", "please", "the", "now"}]
+        if not extra:
+            return True
     if "salt" not in tokens:
-        # "stop voice over" already matched above. Keep "soap step voiceover" after aliases.
         return bool(tokens & {"stop", "close"} and ("voice" in tokens or "voiceover" in tokens) and len(words) <= 6)
-    if "standby" in tokens or tokens & {"pause", "quiet", "sleep"}:
+    if tokens & {"pause", "quiet", "sleep"}:
         return True
     if tokens & {"stop", "close"} and ("voice" in tokens or "voiceover" in tokens):
         return True

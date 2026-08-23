@@ -62,7 +62,7 @@ class VoiceSession:
                 status_line="Listening. Speak a task. Say Salt go on standby when you finish.",
             )
         else:
-            log.info("standby — waiting for Salt wake up")
+            log.info("standby — not pasting; still listening for Salt wake up")
             self.hub.emit(
                 "arm",
                 phase=Phase.SLEEPING,

@@ -55,6 +55,10 @@ def test_phrases() -> None:
     assert is_filler_utterance("All right.")
     assert not is_filler_utterance("Can you hear me?")
     assert remainder_after_wake("Salt wake up open the download folder") == "open the download folder"
+    assert classify_utterance("on standby.") == "standby"
+    assert classify_utterance("go on standby") == "standby"
+    assert classify_utterance("Hello, salt wake up.") == "wake"
+    assert classify_utterance("put chrome on standby") == "task"
 
 
 def test_hub() -> None:

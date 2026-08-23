@@ -37,6 +37,7 @@ class WakeWatcher:
         self._mute_until = 0.0
         self._last_norm = ""
         self._last_norm_at = 0.0
+        self._last_standby_note = 0.0
 
     def reset(self) -> None:
         self._chunks.clear()
@@ -45,7 +46,7 @@ class WakeWatcher:
     def enter_sleep(self) -> None:
         self.listening = False
         self.reset()
-        self._mute_until = time.monotonic() + 2.5
+        self._mute_until = time.monotonic() + 1.2
 
     def enter_listen(self) -> None:
         self.listening = True
@@ -56,7 +57,7 @@ class WakeWatcher:
         return 18.0 if self.listening else 3.8
 
     def _voice_floor(self) -> float:
-        return 0.016 if self.listening else 0.05
+        return 0.016 if self.listening else 0.02
 
     async def feed(self, pcm: bytes) -> None:
         if not self.enabled:
@@ -86,10 +87,10 @@ class WakeWatcher:
         blob = b"".join(self._chunks)
         self.reset()
         duration = len(blob) / (SAMPLE_RATE * 2)
-        min_dur = 0.35 if self.listening else 1.15
+        min_dur = 0.35 if self.listening else 0.55
         if duration < min_dur or duration > cap + 0.4:
             return
-        need = 0.012 if self.listening else 0.04
+        need = 0.01 if self.listening else 0.012
         if rms_int16(blob) < need:
             return
         self._busy = True
@@ -132,13 +133,19 @@ class WakeWatcher:
                     await self.on_target("here")
                 return
             if is_filler_utterance(text):
-                log.info("stt: %r filler — not pasted", text)
+                if self.listening:
+                    log.info("stt: %r filler — not pasted", text)
                 return
             if self.listening and self.on_utterance:
                 if self.on_text:
                     self.on_text(text)
                 log.info("stt: %r listening=True dur=%.1fs", text, duration)
                 await self.on_utterance(text)
+                return
+            # Standby: keep transcribing so Salt wake up still works. Do not paste.
+            if now - self._last_standby_note >= 12:
+                log.info("standby — still listening for Salt wake up (ignored %r)", text)
+                self._last_standby_note = now
         except Exception:
             log.exception("stt handler failed")
         finally:
