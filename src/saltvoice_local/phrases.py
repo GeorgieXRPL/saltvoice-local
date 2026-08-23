@@ -153,7 +153,17 @@ def _map_salt_words(n: str) -> str:
     i = 0
     while i < len(words):
         nxt = words[i + 1] if i + 1 < len(words) else ""
-        if words[i] == "so" and nxt in {"at", "alt", "olt", "ought", "ot"}:
+        if words[i] in {"so", "soak", "soaked", "oh", "out", "saw"} and nxt in {
+            "wake",
+            "wakeup",
+            "standby",
+            "listen",
+            "voice",
+        }:
+            out.append("salt")
+            i += 1
+            continue
+        if words[i] == "so" and nxt in {"at", "alt", "olt", "ought", "ot", "go"}:
             out.append("salt")
             i += 2
             continue

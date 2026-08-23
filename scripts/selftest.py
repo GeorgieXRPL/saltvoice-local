@@ -61,6 +61,9 @@ def test_phrases() -> None:
     assert classify_utterance("put chrome on standby") == "task"
     assert classify_utterance("soat wake up") == "wake"
     assert classify_utterance("soat go on standby") == "standby"
+    assert classify_utterance("So wake up.") == "wake"
+    assert classify_utterance("Soak, wake up.") == "wake"
+    assert classify_utterance("Soat go on standby.") == "standby"
     from saltvoice_local.phrases import is_incomplete_utterance, normalize
 
     assert normalize("soat") == "salt"
