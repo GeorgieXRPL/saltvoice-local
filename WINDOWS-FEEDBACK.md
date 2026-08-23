@@ -352,3 +352,17 @@ So standby no longer goes deaf. Restart is not required.
 
 No VAD/Processing INFO in this stretch. No API keys.
 Log: `%LOCALAPPDATA%\SaltvoiceLocal\saltvoice-local.log`
+
+## Update 2026-08-23 08:28 PT — “bye” is not standby (MyPC)
+
+User said they cannot “say bye” to put Saltvoice Local on standby.
+
+Current standby phrases that work: `Salt go on standby` / `Salt, go on standby.` (exact). `Salt cut asleep` still pastes. `Soat go on standby.` still pastes.
+
+**Ask Cursor:** treat these as standby (do not paste):
+- `bye`
+- `say bye`
+- `Salt say bye`
+- `Salt go to sleep` / `Salt cut asleep` (already requested)
+
+tiny.en often hears `So go and say bye.` when the user means standby. Fuzzy-match “say bye” / “bye” after Salt-ish wake word, and also bare `bye` if that is the whole utterance.
