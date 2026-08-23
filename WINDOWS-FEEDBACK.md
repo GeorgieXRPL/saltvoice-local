@@ -290,3 +290,36 @@ These two INFO lines fire about every 1–2 seconds even on **standby** (see 07:
 2026-08-23 07:23:20,048 INFO Processing audio with duration 00:01.360
 2026-08-23 07:23:20,050 INFO VAD filter removed 00:00.000 of audio
 ```
+
+## Update 2026-08-23 07:45 PT — standby stops listening (3392a4d)
+
+User report: **when it goes on standby it stops listening.** Wake-up cannot be heard until the process is restarted.
+
+### After pull/restart (07:41–07:44)
+
+VAD / `Processing audio` INFO is gone on this build (good). `So.` marked `filler — not pasted` (good).
+
+```
+07:42:43 stt: 'Hello, salt wake up.' wake — listening
+07:43:10 navigate to Google.  HANDOFF
+07:43:19 close Google.  HANDOFF
+07:43:50 Suboperation.  HANDOFF
+07:43:54 stop operation.  HANDOFF
+07:44:04 So.  filler — not pasted
+07:44:05 on standby.  HANDOFF (missing the word Salt — still pasted)
+07:44:13 stt: 'Salt go on standby.' standby — not sending to any app
+07:44:13 standby — waiting for Salt wake up
+```
+
+**No further stt/VAD/Processing lines after 07:44:13.** Log is dead until a manual restart. That matches the user: standby now mutes the wake listener, not just paste.
+
+### Cursor fix
+
+Standby should:
+- stop pasting to Grok Bot
+- **keep** a wake-only listener so `Salt wake up` works without killing the process
+- not require Grok Bot to restart the app
+
+Also still paste `on standby.` when the word Salt is dropped. Treat bare `standby` / `go on standby` as control.
+
+No API keys. Log: `%LOCALAPPDATA%\SaltvoiceLocal\saltvoice-local.log`
