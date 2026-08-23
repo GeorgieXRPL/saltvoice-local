@@ -32,7 +32,14 @@ Two ways:
 
 ## Overlay
 
-The window at the top of the screen shows **STANDBY** or **LISTENING**, what you said, and what was sent to Grok Bot. Use **Teach it your accent** if Whisper keeps hearing the wrong word (example: `soat` → `salt`). **Save word** writes to memory immediately.
+The window at the top of the screen shows **STANDBY** or **LISTENING**, what you said, and what was sent to Grok Bot.
+
+**Settings** is the gold button in the overlay header. There is also a **Settings** tab, and **Open Settings** in the tray. In Settings you can:
+
+- teach misheard words (`soat` → `salt`)
+- save spoken shortcuts that expand into a full Grok Bot task
+- add your own wake / standby phrases
+- raise **Wait until I finish speaking** if one request is split into several pastes
 
 ## Memory (brain)
 

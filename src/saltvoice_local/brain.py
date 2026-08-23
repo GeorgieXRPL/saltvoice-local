@@ -24,6 +24,9 @@ commands:
   # Extra wake/standby phrases in your own words
   # thats enough: standby
   # back to work: wake
+
+settings:
+  finish_wait_seconds: 2.2
 """
 
 
@@ -35,6 +38,7 @@ class Brain:
         self.corrections: dict[str, str] = {}
         self.shortcuts: dict[str, str] = {}
         self.commands: dict[str, str] = {}
+        self.finish_wait = 2.2
         self.load()
 
     def load(self) -> None:
@@ -51,6 +55,12 @@ class Brain:
         self.corrections = _str_map(data.get("corrections"))
         self.shortcuts = _str_map(data.get("shortcuts"))
         self.commands = _str_map(data.get("commands"))
+        settings = data.get("settings") if isinstance(data.get("settings"), dict) else {}
+        try:
+            self.finish_wait = float(settings.get("finish_wait_seconds") or 2.2)
+        except (TypeError, ValueError):
+            self.finish_wait = 2.2
+        self.finish_wait = max(0.8, min(4.0, self.finish_wait))
         self._push_into_phrases()
         log.info(
             "brain: %s correction(s), %s shortcut(s), %s command(s) from %s",
@@ -65,6 +75,7 @@ class Brain:
             "corrections": self.corrections,
             "shortcuts": self.shortcuts,
             "commands": self.commands,
+            "settings": {"finish_wait_seconds": self.finish_wait},
         }
         self.path.write_text(
             yaml.safe_dump(payload, sort_keys=False, allow_unicode=True),
@@ -90,6 +101,39 @@ class Brain:
         self.shortcuts[key] = task
         self.save()
         return f"Saved shortcut: “{key}”."
+
+    def add_command(self, phrase: str, kind: str) -> str:
+        key = _plain(phrase)
+        kind = (kind or "").strip().lower().replace(" ", "_")
+        if kind in {"sleep", "stop", "pause"}:
+            kind = "standby"
+        if kind in {"listen", "start"}:
+            kind = "wake"
+        if not key:
+            return "Type a phrase, then choose wake or standby."
+        if kind not in {"wake", "standby", "target_grok", "target_here"}:
+            return "Choose wake or standby."
+        self.commands[key] = kind
+        self.save()
+        return f"Saved phrase: “{key}” means {kind}."
+
+    def set_finish_wait(self, seconds: float) -> str:
+        try:
+            value = float(seconds)
+        except (TypeError, ValueError):
+            return "Wait time must be a number of seconds."
+        self.finish_wait = max(0.8, min(4.0, value))
+        self.save()
+        return f"Wait {self.finish_wait:.1f}s after you stop talking before sending."
+
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "corrections": dict(self.corrections),
+            "shortcuts": dict(self.shortcuts),
+            "commands": dict(self.commands),
+            "finish_wait": self.finish_wait,
+            "path": str(self.path),
+        }
 
     def expand_shortcut(self, text: str) -> str | None:
         key = _plain(text)

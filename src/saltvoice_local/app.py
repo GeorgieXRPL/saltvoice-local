@@ -161,6 +161,9 @@ def run(*, check: bool = False) -> int:
         overlay = Overlay(
             hub,
             on_teach=lambda heard, meant: brain.add_correction(heard, meant),
+            on_shortcut=brain.add_shortcut,
+            on_command=brain.add_command,
+            on_snapshot=brain.snapshot,
             on_open_brain=lambda: _open_path(brain.path),
         )
         from saltvoice_local.grok_bot import set_topmost_hook
@@ -225,7 +228,17 @@ def run(*, check: bool = False) -> int:
         overlay.on_wake = lambda: call(session.arm(True))
         overlay.on_standby = lambda: call(session.arm(False))
         overlay.on_teach = lambda heard, meant: brain.add_correction(heard, meant)
+        overlay.on_shortcut = brain.add_shortcut
+        overlay.on_command = brain.add_command
+        overlay.on_snapshot = brain.snapshot
         overlay.on_open_brain = lambda: _open_path(brain.path)
+
+        def _set_wait(seconds: float) -> str:
+            message = brain.set_finish_wait(seconds)
+            session.set_finish_wait(brain.finish_wait)
+            return message
+
+        overlay.on_finish_wait = _set_wait
 
     def toggle() -> None:
         call(session.toggle())
@@ -236,6 +249,10 @@ def run(*, check: bool = False) -> int:
     def toggle_overlay() -> None:
         if overlay is not None:
             overlay.root.after(0, overlay.toggle_visible)
+
+    def show_settings() -> None:
+        if overlay is not None:
+            overlay.root.after(0, overlay.show_settings)
 
     async def shutdown() -> None:
         await session.close()
@@ -263,6 +280,7 @@ def run(*, check: bool = False) -> int:
         on_quit=quit_app,
         on_open_config=lambda: _open_path(settings.config_path),
         on_open_brain=lambda: _open_path(brain.path),
+        on_overlay_settings=show_settings,
     )
     listener = HotkeyListener(
         settings.hotkeys,

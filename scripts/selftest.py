@@ -64,6 +64,25 @@ def test_phrases() -> None:
     assert classify_utterance("So wake up.") == "wake"
     assert classify_utterance("Soak, wake up.") == "wake"
     assert classify_utterance("Soat go on standby.") == "standby"
+    # Evening Windows log (tiny.en)
+    assert classify_utterance("So wake up.") == "wake"
+    assert classify_utterance("Soak, wake up.") == "wake"
+    assert classify_utterance("You salt wake up.") == "wake"
+    assert classify_utterance("So let's go on standby.") == "standby"
+    assert classify_utterance("Soat, go on, standby.") == "standby"
+    assert classify_utterance("Stop going same boy.") == "standby"
+    assert classify_utterance("bye") == "standby"
+    assert classify_utterance("say bye") == "standby"
+    assert classify_utterance("Salt say bye") == "standby"
+    assert classify_utterance("So go and say bye.") == "standby"
+    assert classify_utterance("Salt go to sleep") == "standby"
+    assert classify_utterance("Salt cut asleep.") == "standby"
+    assert classify_utterance("put chrome on standby") == "task"
+    from saltvoice_local.phrases import is_incomplete_utterance, is_noise_utterance, normalize, polish_task
+
+    assert polish_task("Open crime.") == "Open Chrome."
+    assert is_noise_utterance("purple.")
+    assert is_noise_utterance("Fuck, fuck, fuck, fuck!")
     from saltvoice_local.phrases import is_incomplete_utterance, normalize
 
     assert normalize("soat") == "salt"

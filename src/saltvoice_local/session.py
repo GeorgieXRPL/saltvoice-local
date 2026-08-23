@@ -6,7 +6,15 @@ import time
 
 from saltvoice_local.audio import AudioBridge
 from saltvoice_local.config import Settings
-from saltvoice_local.phrases import classify_utterance, is_filler_utterance, is_incomplete_utterance, normalize, remainder_after_wake
+from saltvoice_local.phrases import (
+    classify_utterance,
+    is_filler_utterance,
+    is_incomplete_utterance,
+    is_noise_utterance,
+    normalize,
+    polish_task,
+    remainder_after_wake,
+)
 from saltvoice_local.state import Hub, Phase
 from saltvoice_local.wake import WakeWatcher
 from saltvoice_local.worker import ComputerWorker
@@ -81,6 +89,7 @@ class VoiceSession:
         if self.audio and self._pump_task is None:
             self._pump_task = asyncio.create_task(self._mic_pump(), name="mic-pump")
         if self.wake is None:
+            wait = float(getattr(self.brain, "finish_wait", 2.2) or 2.2) if self.brain else 2.2
             self.wake = WakeWatcher(
                 language=self.settings.language,
                 on_wake=lambda: self.arm(True),
@@ -88,6 +97,7 @@ class VoiceSession:
                 on_utterance=self._on_user_final,
                 on_text=lambda text: self.hub.emit("wake-stt", user_text=text, status_line=f"Heard: {text}"),
                 on_target=self.set_target,
+                finish_wait=wait,
             )
         if self._sleep_task is None:
             self._sleep_task = asyncio.create_task(self._auto_sleep(), name="auto-sleep")
@@ -118,6 +128,10 @@ class VoiceSession:
                 continue
             if time.monotonic() - self._last_user_activity >= limit:
                 await self.arm(False)
+
+    def set_finish_wait(self, seconds: float) -> None:
+        if self.wake:
+            self.wake.finish_wait = max(0.8, min(4.0, float(seconds)))
 
     async def set_target(self, target: str) -> None:
         self.worker.target = target
@@ -152,9 +166,10 @@ class VoiceSession:
         if kind == "target_here":
             await self.set_target("here")
             return
-        if is_filler_utterance(text) or is_incomplete_utterance(text):
+        if is_filler_utterance(text) or is_incomplete_utterance(text) or is_noise_utterance(text):
             log.info("filler (not pasted): %s", text)
             return
+        text = polish_task(text)
         if self.brain is not None:
             expanded = self.brain.expand_shortcut(text)
             if expanded:
