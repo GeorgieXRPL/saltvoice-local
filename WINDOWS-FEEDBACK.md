@@ -463,3 +463,15 @@ Same as overnight: `Salt go to sleep.` / standby does not stop STT. Room audio s
 Deaf sleep: no `holding`, no `ignored`, no Whisper until hotkey or an explicit wake that is not always-on STT. User is fixing STT from this log.
 
 No API keys.
+
+## Update 2026-08-24 05:45 PT — 0e78e66 will not start (MyPC)
+
+Pulled `0e78e66` (Stop the mic stream on standby). Killed old processes. New start crashes immediately:
+
+```
+File "...\src\saltvoice_local\process.py", line 18, in configure_stdio
+    for stream in (sys.stdout, sys.stderr):
+NameError: name 'sys' is not defined. Did you forget to import 'sys'?
+```
+
+Saltvoice Local is not running. Need `import sys` in process.py (or equivalent) then we can restart.
