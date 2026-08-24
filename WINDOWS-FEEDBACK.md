@@ -417,3 +417,27 @@ Exact `Salt wake up.` armed twice. Later `standby` then `Salt wake up.` again at
 Do not treat short status questions (`are you online`, `are you running`) as filler. Keep hold-to-finish. Fuzzy Salt still wanted for So/Soat.
 
 No API keys. Log: `%LOCALAPPDATA%\SaltvoiceLocal\saltvoice-local.log`
+
+## Update 2026-08-24 04:35 PT — sleep still runs STT (MyPC)
+
+On `9669246` / `ded969b`. User asked to upload logs: **Salt is still listening when he goes to sleep.**
+
+### What happened
+
+`Salt go to sleep.` correctly becomes standby (04:34:04, 04:35:28):
+
+```
+standby — not pasting; still listening for Salt wake up
+```
+
+Then STT keeps transcribing room talk and holding phrases:
+
+- ignored `Gotta find somebody to love.`
+- holding: `Salt.`, `It's done!`, `Let's go!`, `Salt go on.`, kitchen talk (`Add a little bit of salt.`, `It's yummy.`)
+- Overnight 21:09–04:14 the process never went deaf
+
+User does **not** want a wake listener on sleep. Sleep should stop STT (no holding, no ignored lines). Wake can be a hotkey (Ctrl+Alt+G) or a process restart until a true low-power wake-word exists.
+
+`Salt go to sleep.` should mean sleep/deaf, not “standby but still hearing the kitchen.”
+
+No API keys. Log: `%LOCALAPPDATA%\SaltvoiceLocal\saltvoice-local.log`
