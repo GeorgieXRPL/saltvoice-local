@@ -542,3 +542,33 @@ RuntimeError: main thread is not in main loop
 ```
 
 Still need: listen-on-open without `main thread is not in main loop`. Sleep stays mute.
+
+## Update 2026-08-24 09:14 PT — cea4652 listen-on-start + deaf sleep (MyPC)
+
+Pulled `cea4652` / `350cc95`, restarted 09:08. User asked to upload this log.
+
+### Listen-on-start worked
+
+```
+09:08:02 build: listen-on-start-poll (Tk only from overlay loop)
+09:08:04 Whisper ready
+09:08:04 STT ON
+09:08:04 armed — listening
+```
+
+No `main thread is not in main loop` on this start.
+
+### Sleep is deaf
+
+At 09:08:17 `Salt go to sleep.`:
+
+```
+standby — not sending to any app
+wake watcher deaf — no STT until Wake / Ctrl+Alt+G
+STT OFF — Whisper will not run
+sleep — microphone stream stopped; STT off
+```
+
+Log last write 09:08:17. No holding/ignored kitchen lines after sleep. This is the requested STT behavior.
+
+No API keys.
