@@ -67,6 +67,7 @@ class WakeWatcher:
         self._pending = ""
         self._abandon_draft()
         self._mute_until = time.monotonic() + 1.2
+        log.info("wake watcher deaf — no STT until Wake / Ctrl+Alt+G")
 
     def enter_listen(self) -> None:
         self.listening = True
@@ -176,12 +177,6 @@ class WakeWatcher:
                     await self.on_target("here")
                 return
             if is_filler_utterance(text) or is_noise_utterance(text) or is_incomplete_utterance(text):
-                if self._draft:
-                    log.info("stt: %r skipped junk; still waiting for you to finish", text)
-                    await self._bump_flush()
-                else:
-                    log.info("stt: %r filler — not pasted", text)
-                return
                 if self._draft:
                     log.info("stt: %r skipped junk; still waiting for you to finish", text)
                     await self._bump_flush()

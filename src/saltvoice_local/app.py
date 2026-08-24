@@ -11,6 +11,7 @@ from pathlib import Path
 from saltvoice_local.config import app_data_dir, describe_setup, load_settings
 from saltvoice_local.process import acquire_single_instance, configure_stdio, safe_print
 from saltvoice_local.state import Hub, Phase
+from saltvoice_local.stt import set_listening
 
 log = logging.getLogger("saltvoice_local")
 
@@ -55,7 +56,9 @@ def _setup_logging() -> None:
         noisy.setLevel(logging.WARNING)
         noisy.addFilter(quiet)
     log.info("log file: %s", logfile)
+    log.info("build: sleep-stream-off (standby stops mic stream + Whisper)")
     print(f"LOG FILE: {logfile}", flush=True)
+    print("BUILD: sleep-stream-off  (standby = mic stream OFF, STT OFF)", flush=True)
 
 
 def _windows_dpi() -> None:
@@ -103,7 +106,7 @@ def _console_mirror(_event: str, snapshot: dict) -> None:
     if _event == "arm" and snapshot.get("armed"):
         safe_print("LISTENING. Speak a task. Sleep: Salt go to sleep", flush=True)
     if _event == "arm" and not snapshot.get("armed"):
-        safe_print("SLEEP. Mic off. Press Wake or Ctrl+Alt+G.", flush=True)
+        safe_print("SLEEP. Mic stream off. STT off. Press Wake or Ctrl+Alt+G.", flush=True)
     if _event == "target":
         safe_print(f"TARGET: {snapshot.get('status_line')}", flush=True)
     if _event == "wake-stt" and snapshot.get("user_text") and snapshot.get("armed"):
@@ -117,6 +120,7 @@ def run(*, check: bool = False) -> int:
     _setup_logging()
     if not check and not acquire_single_instance():
         safe_print("Saltvoice Local is already running. Close the other window first.")
+        safe_print("Task Manager → python.exe → End task, then run.bat again.")
         return 3
     settings = load_settings()
     for line in describe_setup(settings):
@@ -195,7 +199,8 @@ def run(*, check: bool = False) -> int:
     try:
         audio.start()
         audio.mic.arm(False)
-        print("Sleeping. Microphone is off until you press Wake or Ctrl+Alt+G.", flush=True)
+        set_listening(False)
+        print("Sleeping. Microphone stream is off until you press Wake or Ctrl+Alt+G.", flush=True)
     except Exception as exc:
         hub.emit("error", phase=Phase.ERROR, status_line=f"Microphone failed: {exc}")
         log.exception("audio start failed")

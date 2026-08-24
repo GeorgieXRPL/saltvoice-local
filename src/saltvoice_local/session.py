@@ -16,6 +16,7 @@ from saltvoice_local.phrases import (
     remainder_after_wake,
 )
 from saltvoice_local.state import Hub, Phase
+from saltvoice_local.stt import set_listening
 from saltvoice_local.wake import WakeWatcher
 from saltvoice_local.worker import ComputerWorker
 
@@ -57,6 +58,8 @@ class VoiceSession:
 
     async def arm(self, value: bool) -> None:
         self._armed = value
+        # Gate Whisper before touching the mic so an in-flight clip cannot log holding.
+        set_listening(bool(value))
         if self.wake:
             if value:
                 self.wake.enter_listen()
@@ -64,6 +67,8 @@ class VoiceSession:
                 self.wake.enter_sleep()
         if self.audio:
             self.audio.mic.arm(bool(value))
+            if not value:
+                self.audio.drain()
         if value:
             self._last_user_activity = time.monotonic()
             log.info("armed — listening; say Salt go to sleep when you are done")
@@ -75,14 +80,14 @@ class VoiceSession:
                 target=self.worker.target,
             )
         else:
-            log.info("sleep — microphone off; not transcribing")
+            log.info("sleep — microphone stream stopped; STT off")
             self.hub.emit(
                 "arm",
                 phase=Phase.SLEEPING,
                 armed=False,
                 user_text="",
                 assistant_text="",
-                status_line="Sleeping. Mic is off. Press Wake or Ctrl+Alt+G. Kitchen talk is not heard.",
+                status_line="Sleeping. Mic stream is off. Press Wake or Ctrl+Alt+G. Kitchen talk is not heard.",
                 target=self.worker.target,
             )
 
@@ -120,7 +125,7 @@ class VoiceSession:
                 pcm = await asyncio.wait_for(self.audio.outgoing.get(), timeout=0.25)
             except asyncio.TimeoutError:
                 continue
-            if self.wake:
+            if self._armed and self.wake:
                 await self.wake.feed(pcm)
 
     async def _auto_sleep(self) -> None:
@@ -202,8 +207,10 @@ class VoiceSession:
         self._ensure()
         self._stop.set()
         self._armed = False
+        set_listening(False)
         if self.audio:
             self.audio.mic.arm(False)
+            self.audio.drain()
         for task in (self._pump_task, self._sleep_task):
             if task:
                 task.cancel()

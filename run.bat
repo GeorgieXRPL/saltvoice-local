@@ -38,12 +38,17 @@ chcp 65001 >nul
 set PYTHONIOENCODING=utf-8
 set PYTHONUTF8=1
 set PYTHONPATH=%~dp0src
+
+echo Closing leftover Saltvoice Local if one is still listening...
+taskkill /F /FI "WINDOWTITLE eq Saltvoice Local*" >nul 2>nul
+timeout /t 1 /nobreak >nul
+title Saltvoice Local
+
 echo.
 echo Saltvoice Local is starting. Offline Whisper — no API key.
 echo Look for a window titled Saltvoice Local at the TOP of the screen.
-echo Start: Salt wake up
-echo Pause: Salt go on standby  (not sent to Grok Bot)
-echo First run downloads the Whisper model, then it stays on this PC.
+echo Starts SLEEP (mic stream off). Wake: overlay Wake or Ctrl+Alt+G.
+echo Sleep: Salt go to sleep / standby / bye  — STT stops, mic stream closes.
 echo Keep this window open.
 echo.
 python -m saltvoice_local %*

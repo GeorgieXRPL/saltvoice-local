@@ -20,8 +20,23 @@ class Microphone:
     def arm(self, value: bool) -> None:
         if value:
             self._armed.set()
-        else:
-            self._armed.clear()
+            self.start()
+            return
+        self._armed.clear()
+        self._stop_stream()
+
+    def _stop_stream(self) -> None:
+        if self._stream is None:
+            return
+        try:
+            self._stream.stop()
+        except Exception:
+            pass
+        try:
+            self._stream.close()
+        except Exception:
+            pass
+        self._stream = None
 
     def start(self) -> None:
         if self._stream is not None:
@@ -58,13 +73,6 @@ class Microphone:
 
     def close(self) -> None:
         self.arm(False)
-        if self._stream is not None:
-            try:
-                self._stream.stop()
-                self._stream.close()
-            except Exception:
-                pass
-            self._stream = None
 
 
 class AudioBridge:
@@ -77,6 +85,13 @@ class AudioBridge:
 
     def start(self) -> None:
         self.mic.start()
+
+    def drain(self) -> None:
+        while True:
+            try:
+                self.outgoing.get_nowait()
+            except asyncio.QueueEmpty:
+                break
 
     def _from_portaudio(self, pcm: bytes) -> None:
         def _put() -> None:

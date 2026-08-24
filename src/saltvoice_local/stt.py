@@ -16,6 +16,14 @@ WHISPER_RATE = 16_000
 _model = None
 _model_lock = threading.Lock()
 _model_name = ""
+_stt_on = False
+
+
+def set_listening(on: bool) -> None:
+    """Hard gate: Whisper must not run while sleeping / on standby."""
+    global _stt_on
+    _stt_on = bool(on)
+    log.info("STT %s", "ON" if _stt_on else "OFF — Whisper will not run")
 
 
 def load_model(name: str, device: str, compute_type: str, download_root: Path | None = None):
@@ -46,6 +54,8 @@ def transcribe_pcm(
     language: str = "en",
     min_rms: float = 0.008,
 ) -> str:
+    if not _stt_on:
+        return ""
     if not pcm or _model is None:
         return ""
     if rms_int16(pcm) < min_rms:

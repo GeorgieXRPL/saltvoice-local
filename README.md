@@ -34,7 +34,7 @@ Two ways:
 
 The window at the top of the screen shows **SLEEP** or **LISTENING**, what you said, and what was sent to Grok Bot.
 
-**SLEEP** means the microphone is off. Kitchen talk is not transcribed. Press **Wake** or **Ctrl+Alt+G** to listen. Say **Salt go to sleep** (or **bye**) to mute it again.
+**SLEEP** means the microphone stream is closed and Whisper is off. Kitchen talk is not transcribed. Press **Wake** or **Ctrl+Alt+G** to listen. Say **Salt go to sleep** (or **bye**) to mute it again. If an old window is still listening after git pull, `run.bat` closes it.
 
 **Settings** is the gold button in the overlay header. There is also a **Settings** tab, and **Open Settings** in the tray. In Settings you can:
 
