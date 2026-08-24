@@ -110,8 +110,6 @@ class VoiceSession:
             )
         if self._sleep_task is None:
             self._sleep_task = asyncio.create_task(self._auto_sleep(), name="auto-sleep")
-        # Pick up the user's voice as soon as the app is open.
-        await self.arm(True)
 
     async def toggle(self) -> None:
         await self.arm(not self._armed)

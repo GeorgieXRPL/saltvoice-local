@@ -55,9 +55,9 @@ def _setup_logging() -> None:
         noisy.setLevel(logging.WARNING)
         noisy.addFilter(quiet)
     log.info("log file: %s", logfile)
-    log.info("build: listen-on-start (sleep still mutes mic + Whisper)")
+    log.info("build: listen-on-start-tk (arm after overlay loop)")
     print(f"LOG FILE: {logfile}", flush=True)
-    print("BUILD: listen-on-start  (opens listening; sleep still mutes)", flush=True)
+    print("BUILD: listen-on-start-tk  (opens listening; sleep still mutes)", flush=True)
 
 
 def _windows_dpi() -> None:
@@ -224,8 +224,7 @@ def run(*, check: bool = False) -> int:
     try:
         asyncio.run_coroutine_threadsafe(session.start_idle(), loop).result(timeout=15)
     except Exception:
-        log.exception("start listening")
-        print("Could not arm the microphone automatically. Press Wake or Ctrl+Alt+G.", flush=True)
+        log.exception("start idle")
 
     def call(coro) -> None:
         asyncio.run_coroutine_threadsafe(coro, loop)
@@ -312,17 +311,20 @@ def run(*, check: bool = False) -> int:
     hub.emit(
         "ready",
         phase=Phase.LISTENING,
-        armed=True,
-        status_line="Listening. Speak a task. Say Salt go to sleep when you finish.",
+        armed=False,
+        status_line="Starting microphone…",
         target=settings.handoff_target,
     )
     if overlay is not None:
+        overlay.root.after(0, lambda: call(session.arm(True)))
         try:
             overlay.loop()
         finally:
             listener.stop()
             audio.close()
         return 0
+
+    call(session.arm(True))
 
     print("No overlay. Press Ctrl+C to quit.", flush=True)
     try:

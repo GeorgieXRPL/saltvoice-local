@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tkinter as tk
 import threading
+from collections import deque
 from typing import Any, Callable
 
 from saltvoice_local.state import Hub, Phase
@@ -57,6 +58,7 @@ class Overlay:
         self._hidden = False
         self._page = "listen"
         self._last_heard = ""
+        self._hub_events: deque[tuple[str, dict]] = deque(maxlen=40)
         self.root = tk.Tk()
         self.root.title("Saltvoice Local")
         self.root.configure(bg=BG)
@@ -584,37 +586,49 @@ class Overlay:
         except tk.TclError:
             pass
 
-    def _on_hub(self, _event: str, snapshot: dict) -> None:
-        def apply() -> None:
-            armed = bool(snapshot.get("armed"))
-            color = PHASE_COLOR.get(snapshot["phase"], GREEN)
-            label = "LISTENING" if armed else "SLEEP"
-            self.badge.configure(text=label, bg=color, fg=BG if armed else WHITE)
-            self.phase_label.configure(text="Saltvoice Local", fg=WHITE)
-            target = str(snapshot.get("target") or "grok")
-            self.target_label.configure(text="→ front window" if target == "here" else "→ Grok Bot")
-            user = (snapshot.get("user_text") or "").strip()
-            status = snapshot.get("status_line") or ""
-            if user:
-                self._last_heard = user
-                if not self.heard_var.get().strip():
-                    self.heard_var.set(user)
-                self.you.configure(text=user[:400])
-            elif not armed:
-                self.you.configure(text=status[:400] or "Sleeping. Mic is off. Press Wake or Ctrl+Alt+G.")
-            elif status:
-                self.you.configure(text=status[:400])
-            if not armed:
-                self.bot.configure(text="Mic off. Nothing is sent. Press Wake or Ctrl+Alt+G to listen.")
-            elif status and ("HANDOFF" in status or "Sent" in status or "TASK" in status):
-                self.bot.configure(text=status[:400])
-            elif _event == "handoff":
-                self.bot.configure(text=status[:400] or user)
-
+    def _tk_after(self, ms: int, fn: Callable[[], None]) -> None:
         try:
-            self.root.after(0, apply)
-        except tk.TclError:
+            self.root.after(ms, fn)
+        except (tk.TclError, RuntimeError):
             pass
+
+    def _on_hub(self, _event: str, snapshot: dict) -> None:
+        self._hub_events.append((_event, dict(snapshot)))
+        self._tk_after(0, self._drain_hub)
+
+    def _drain_hub(self) -> None:
+        while self._hub_events:
+            _event, snapshot = self._hub_events.popleft()
+            try:
+                self._apply_hub(_event, snapshot)
+            except tk.TclError:
+                return
+
+    def _apply_hub(self, _event: str, snapshot: dict) -> None:
+        armed = bool(snapshot.get("armed"))
+        color = PHASE_COLOR.get(snapshot["phase"], GREEN)
+        label = "LISTENING" if armed else "SLEEP"
+        self.badge.configure(text=label, bg=color, fg=BG if armed else WHITE)
+        self.phase_label.configure(text="Saltvoice Local", fg=WHITE)
+        target = str(snapshot.get("target") or "grok")
+        self.target_label.configure(text="→ front window" if target == "here" else "→ Grok Bot")
+        user = (snapshot.get("user_text") or "").strip()
+        status = snapshot.get("status_line") or ""
+        if user:
+            self._last_heard = user
+            if not self.heard_var.get().strip():
+                self.heard_var.set(user)
+            self.you.configure(text=user[:400])
+        elif not armed:
+            self.you.configure(text=status[:400] or "Sleeping. Mic is off. Press Wake or Ctrl+Alt+G.")
+        elif status:
+            self.you.configure(text=status[:400])
+        if not armed:
+            self.bot.configure(text="Mic off. Nothing is sent. Press Wake or Ctrl+Alt+G to listen.")
+        elif status and ("HANDOFF" in status or "Sent" in status or "TASK" in status):
+            self.bot.configure(text=status[:400])
+        elif _event == "handoff":
+            self.bot.configure(text=status[:400] or user)
 
     def set_topmost(self, value: bool) -> None:
         done = threading.Event()
@@ -632,11 +646,10 @@ class Overlay:
             finally:
                 done.set()
 
-        try:
-            self.root.after(0, apply)
-            done.wait(timeout=1.0)
-        except tk.TclError:
-            pass
+        self._tk_after(0, apply)
+        if threading.current_thread() is threading.main_thread():
+            return
+        done.wait(timeout=1.0)
 
     def toggle_visible(self) -> None:
         if self._hidden:
@@ -657,6 +670,7 @@ class Overlay:
         self.root.protocol("WM_DELETE_WINDOW", lambda: fn())
 
     def loop(self) -> None:
+        self._tk_after(0, self._drain_hub)
         self.root.mainloop()
 
     def shutdown(self) -> None:
