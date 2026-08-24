@@ -366,3 +366,32 @@ Current standby phrases that work: `Salt go on standby` / `Salt, go on standby.`
 - `Salt go to sleep` / `Salt cut asleep` (already requested)
 
 tiny.en often hears `So go and say bye.` when the user means standby. Fuzzy-match “say bye” / “bye” after Salt-ish wake word, and also bare `bye` if that is the whole utterance.
+
+## Update 2026-08-23 18:14 PT — evening session (MyPC)
+
+Restarted Saltvoice Local 17:41 and 17:54. tiny.en. User asked to upload these logs.
+
+### Standby still too exact
+
+Pasted into Grok Bot (should have been standby):
+- `So let's go on standby.`
+- `Soat, go on, standby.`
+- `Stop going same boy.` (user meant standby)
+
+Exact `Salt go on standby.` then worked (17:43:22). Wake-on-standby still works; ignored `So wake up.` until `You salt wake up.` armed it.
+
+### Wake still too exact
+
+Ignored on standby: `So wake up.` (twice). Accepted: `Salt wake up.` and `You salt wake up.`
+
+### Armed paste noise
+
+tiny.en split one request into junk pastes: `I'm... Soka.` / `about Soka.` / `purple.` / `Thought to pull over.` / `Fuck, fuck, fuck, fuck!` / `bucket photo.` before the real line `Not Bucket Photo Football. Build me a one page website about football.`
+
+Also pasted `Open crime.` (Chrome).
+
+### Still requested
+
+Fuzzy Salt (So/Soat/Salts), `bye` / `say bye` as standby, hold-to-finish so a long command is one paste not six.
+
+No API keys. Log: `%LOCALAPPDATA%\SaltvoiceLocal\saltvoice-local.log`
