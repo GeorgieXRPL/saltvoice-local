@@ -441,3 +441,25 @@ User does **not** want a wake listener on sleep. Sleep should stop STT (no holdi
 `Salt go to sleep.` should mean sleep/deaf, not “standby but still hearing the kitchen.”
 
 No API keys. Log: `%LOCALAPPDATA%\SaltvoiceLocal\saltvoice-local.log`
+
+## Update 2026-08-24 05:27 PT — more STT-on-sleep proof (MyPC)
+
+User: upload to GitHub so they can **fix the STT**. Still on `5dc3b84` (no new app code). Restarted Saltvoice ~05:24 (second start hit `ERROR another Saltvoice Local process is already running`).
+
+### Sleep / standby still runs Whisper
+
+After `Salt go on standby.` at 05:26:17:
+
+```
+standby — not pasting; still listening for Salt wake up
+stt: "It's so listening." holding (waiting for Salt wake up)
+ignored "It's still listening, all right. Fucking, don't do the simplest thing when you get a sleep."
+```
+
+Same as overnight: `Salt go to sleep.` / standby does not stop STT. Room audio still transcribed (`Gotta find somebody to live.`, `Is that everything?`, `Alright, let's go.`).
+
+### Ask Cursor
+
+Deaf sleep: no `holding`, no `ignored`, no Whisper until hotkey or an explicit wake that is not always-on STT. User is fixing STT from this log.
+
+No API keys.
