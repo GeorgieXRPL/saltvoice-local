@@ -30,6 +30,7 @@ class WakeWatcher:
         on_text: Callable[[str], None] | None = None,
         on_target: Callable[[str], Awaitable[None]] | None = None,
         finish_wait: float = 2.2,
+        voice_floor: float = 0.018,
     ) -> None:
         self.language = language
         self.on_wake = on_wake
@@ -38,7 +39,8 @@ class WakeWatcher:
         self.on_text = on_text
         self.on_target = on_target
         self.finish_wait = max(0.8, min(4.0, float(finish_wait or 2.2)))
-        self.enabled = True
+        self.voice_floor = max(0.008, min(0.04, float(voice_floor or 0.018)))
+        self.enabled = False
         self.listening = False
         self._chunks: list[bytes] = []
         self._speaking = False
@@ -60,29 +62,29 @@ class WakeWatcher:
 
     def enter_sleep(self) -> None:
         self.listening = False
+        self.enabled = False
         self.reset()
         self._pending = ""
-        self._cancel_flush()
-        self._draft = ""
+        self._abandon_draft()
         self._mute_until = time.monotonic() + 1.2
 
     def enter_listen(self) -> None:
         self.listening = True
+        self.enabled = True
         self.reset()
         self._pending = ""
-        self._cancel_flush()
-        self._draft = ""
+        self._abandon_draft()
         self._mute_until = 0.0
 
     def _max_seconds(self) -> float:
-        return 24.0 if self.listening else 3.8
+        return 24.0
 
     def _voice_floor(self) -> float:
-        return 0.011 if self.listening else 0.014
+        return self.voice_floor
 
     def _hangover(self) -> float:
         # Stay open long enough that a mid-sentence breath does not split one request.
-        return 1.55 if self.listening else 0.7
+        return 1.55
 
     def _cancel_flush(self) -> None:
         task = self._flush_task
@@ -96,7 +98,8 @@ class WakeWatcher:
         self._draft_started = 0.0
 
     async def feed(self, pcm: bytes) -> None:
-        if not self.enabled:
+        # Sleep / standby is deaf: no Whisper, no holding kitchen talk.
+        if not self.enabled or not self.listening:
             return
         now = time.monotonic()
         if now < self._mute_until:
@@ -123,10 +126,10 @@ class WakeWatcher:
         blob = b"".join(self._chunks)
         self.reset()
         duration = len(blob) / (SAMPLE_RATE * 2)
-        min_dur = 0.35 if self.listening else 0.55
+        min_dur = 0.35
         if duration < min_dur or duration > cap + 0.4:
             return
-        need = 0.01 if self.listening else 0.012
+        need = max(0.008, self.voice_floor * 0.85)
         if rms_int16(blob) < need:
             return
         self._busy = True
@@ -134,15 +137,15 @@ class WakeWatcher:
 
     async def _handle_blob(self, blob: bytes, duration: float, min_rms: float) -> None:
         try:
+            if not self.enabled or not self.listening:
+                return
             text = await asyncio.to_thread(transcribe_pcm, blob, SAMPLE_RATE, self.language, min_rms)
             if not text:
                 return
+            if not self.enabled or not self.listening:
+                log.info("stt: %r dropped (went to sleep)", text)
+                return
             now = time.monotonic()
-            # On standby, glue a chopped wake word onto the next clip ("soat" + "wake up").
-            if (not self.listening) and self._pending and now - self._pending_at < 3.2:
-                text = f"{self._pending} {text}".strip()
-                log.info("stt joined fragment → %r", text)
-                self._pending = ""
             kind = classify_utterance(text)
             if kind == "standby":
                 log.info("stt: %r standby — not sending to any app", text)
@@ -172,17 +175,13 @@ class WakeWatcher:
                 if self.on_target:
                     await self.on_target("here")
                 return
-            if not self.listening:
-                if is_incomplete_utterance(text) or is_filler_utterance(text):
-                    self._pending = text
-                    self._pending_at = now
-                    log.info("stt: %r holding (waiting for Salt wake up)", text)
-                    return
-                if now - self._last_standby_note >= 12:
-                    log.info("standby — still listening for Salt wake up (ignored %r)", text)
-                    self._last_standby_note = now
+            if is_filler_utterance(text) or is_noise_utterance(text) or is_incomplete_utterance(text):
+                if self._draft:
+                    log.info("stt: %r skipped junk; still waiting for you to finish", text)
+                    await self._bump_flush()
+                else:
+                    log.info("stt: %r filler — not pasted", text)
                 return
-            if is_filler_utterance(text) or is_noise_utterance(text):
                 if self._draft:
                     log.info("stt: %r skipped junk; still waiting for you to finish", text)
                     await self._bump_flush()
@@ -251,7 +250,7 @@ class WakeWatcher:
         if kind != "task":
             log.info("stt: %r dropped from draft (control)", text)
             return
-        if is_filler_utterance(text) or is_noise_utterance(text):
+        if is_filler_utterance(text) or is_noise_utterance(text) or is_incomplete_utterance(text):
             log.info("stt: %r dropped (too short / noise)", text)
             return
         text = polish_task(text)

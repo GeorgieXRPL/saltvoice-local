@@ -81,8 +81,12 @@ def test_phrases() -> None:
     from saltvoice_local.phrases import is_incomplete_utterance, is_noise_utterance, normalize, polish_task
 
     assert polish_task("Open crime.") == "Open Chrome."
-    assert is_noise_utterance("purple.")
     assert is_noise_utterance("Fuck, fuck, fuck, fuck!")
+    assert is_noise_utterance("a")
+    assert not is_noise_utterance("purple.")
+    assert not is_noise_utterance("Are you online?")
+    assert not is_noise_utterance("That's it.")
+    assert not is_noise_utterance("G-I-F.")
     from saltvoice_local.phrases import is_incomplete_utterance, normalize
 
     assert normalize("soat") == "salt"
@@ -90,6 +94,14 @@ def test_phrases() -> None:
     assert is_incomplete_utterance("so")
     assert is_incomplete_utterance("So.")
     assert not is_incomplete_utterance("Open the download folder")
+    assert not is_incomplete_utterance("Are you online?")
+    assert not is_incomplete_utterance("That's it.")
+    assert not is_incomplete_utterance("Can you hear me?")
+    assert not is_incomplete_utterance("G-I-F.")
+    assert not is_filler_utterance("Are you online?")
+    assert not is_filler_utterance("That's it.")
+    assert not is_filler_utterance("G-I-F.")
+    assert not is_filler_utterance("Can you hear me?")
     from saltvoice_local.phrases import set_command_aliases, set_user_corrections
 
     set_user_corrections({"bork": "salt"})

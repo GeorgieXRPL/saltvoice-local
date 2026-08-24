@@ -186,8 +186,24 @@ _COMMAND_STARTERS = frozenset(
         "volume",
         "not",
         "can",
+        "could",
+        "will",
+        "would",
         "please",
         "hey",
+        "are",
+        "is",
+        "do",
+        "does",
+        "did",
+        "what",
+        "whats",
+        "who",
+        "where",
+        "when",
+        "why",
+        "how",
+        "am",
     }
 )
 
@@ -491,7 +507,9 @@ def is_filler_utterance(text: str) -> bool:
     n = normalize(text)
     if not n or n in FILLERS:
         return True
-    if len(n) < 4 and n not in {"bye", "stop", "wake"}:
+    # One or two letters alone is an STT crumb, not "GIF" or "that's it".
+    words = n.split()
+    if len(words) == 1 and len(words[0]) <= 2 and words[0] not in {"go", "ok", "no"}:
         return True
     return False
 
@@ -504,19 +522,14 @@ def is_noise_utterance(text: str) -> bool:
     content = [w for w in words if w not in FILLERS and w not in PROFANITY]
     if not content:
         return True
-    if len(content) == 1 and content[0] not in _COMMAND_STARTERS and content[0] not in {
-        "salt",
-        "wake",
-        "standby",
-        "chrome",
-        "google",
-    }:
+    # Only drop 1–2 letter crumbs. Short real lines (Are you online? / G-I-F.) must paste.
+    if len(content) == 1 and len(content[0]) <= 2 and content[0] not in _COMMAND_STARTERS:
         return True
     return False
 
 
 def is_incomplete_utterance(text: str) -> bool:
-    """A chopped first syllable of a command, not a real task."""
+    """Chopped first syllable of a command — not a short question or a real sentence."""
     if classify_utterance(text) != "task":
         return False
     if is_filler_utterance(text):
@@ -525,9 +538,16 @@ def is_incomplete_utterance(text: str) -> bool:
     words = n.split()
     if not words:
         return True
-    if len(words) == 1:
-        return True
-    if len(words) <= 3 and words[0] not in _COMMAND_STARTERS:
+    if len(words) == 1 and words[0] in {
+        "salt",
+        "wake",
+        "standby",
+        "voice",
+        "listen",
+        "so",
+        "soat",
+        "soak",
+    }:
         return True
     if n in {"salt so", "so salt", "hey salt so"}:
         return True

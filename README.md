@@ -32,7 +32,9 @@ Two ways:
 
 ## Overlay
 
-The window at the top of the screen shows **STANDBY** or **LISTENING**, what you said, and what was sent to Grok Bot.
+The window at the top of the screen shows **SLEEP** or **LISTENING**, what you said, and what was sent to Grok Bot.
+
+**SLEEP** means the microphone is off. Kitchen talk is not transcribed. Press **Wake** or **Ctrl+Alt+G** to listen. Say **Salt go to sleep** (or **bye**) to mute it again.
 
 **Settings** is the gold button in the overlay header. There is also a **Settings** tab, and **Open Settings** in the tray. In Settings you can:
 
@@ -40,6 +42,7 @@ The window at the top of the screen shows **STANDBY** or **LISTENING**, what you
 - save spoken shortcuts that expand into a full Grok Bot task
 - add your own wake / standby phrases
 - raise **Wait until I finish speaking** if one request is split into several pastes
+- raise **Mic sensitivity** if room noise is picked up while listening
 
 ## Memory (brain)
 

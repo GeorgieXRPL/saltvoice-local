@@ -39,6 +39,7 @@ class Overlay:
         on_shortcut: Callable[[str, str], str] | None = None,
         on_command: Callable[[str, str], str] | None = None,
         on_finish_wait: Callable[[float], str] | None = None,
+        on_voice_floor: Callable[[float], str] | None = None,
         on_snapshot: Callable[[], dict[str, Any]] | None = None,
         on_open_brain: Callable[[], None] | None = None,
     ) -> None:
@@ -50,6 +51,7 @@ class Overlay:
         self.on_shortcut = on_shortcut
         self.on_command = on_command
         self.on_finish_wait = on_finish_wait
+        self.on_voice_floor = on_voice_floor
         self.on_snapshot = on_snapshot
         self.on_open_brain = on_open_brain
         self._hidden = False
@@ -65,7 +67,7 @@ class Overlay:
         except tk.TclError:
             pass
 
-        width, height = 760, 560
+        width, height = 760, 620
         self.root.update_idletasks()
         screen_w = self.root.winfo_screenwidth()
         x = max(12, (screen_w - width) // 2)
@@ -79,7 +81,7 @@ class Overlay:
         top.pack(fill="x", padx=16, pady=(12, 4))
         self.badge = tk.Label(
             top,
-            text="STANDBY",
+            text="SLEEP",
             fg=BG,
             bg=DIM,
             font=("Segoe UI", 11, "bold"),
@@ -89,7 +91,7 @@ class Overlay:
         self.badge.pack(side="left")
         self.phase_label = tk.Label(
             top,
-            text="Saltvoice",
+            text="Saltvoice Local",
             fg=WHITE,
             bg=PANEL,
             font=("Segoe UI", 16, "bold"),
@@ -121,7 +123,7 @@ class Overlay:
 
         self.hint = tk.Label(
             header,
-            text="Wake: “Salt wake up”. Pause: “Salt go on standby”, “bye”, or “say bye”. Open Settings to teach words and saved phrases.",
+            text="Sleeping: mic is off. Press Wake or Ctrl+Alt+G. Say Salt go to sleep while listening to mute it again. Settings has mic sensitivity.",
             fg=DIM,
             bg=PANEL,
             font=("Segoe UI", 9),
@@ -344,6 +346,44 @@ class Overlay:
         scale.pack(fill="x", pady=(4, 0))
         scale.bind("<ButtonRelease-1>", self._save_wait)
 
+        floorf = tk.LabelFrame(
+            parent,
+            text="  5. Mic sensitivity  ",
+            fg=GOLD,
+            bg=BG,
+            font=("Segoe UI", 9, "bold"),
+            padx=8,
+            pady=8,
+        )
+        floorf.pack(fill="x", pady=(0, 8))
+        self.floor_var = tk.DoubleVar(value=0.018)
+        tk.Label(
+            floorf,
+            text="How loud you must speak. Raise this if the kitchen or TV is picked up. Sleep still turns the mic fully off.",
+            fg=DIM,
+            bg=BG,
+            font=("Segoe UI", 8),
+            anchor="w",
+            wraplength=680,
+            justify="left",
+        ).pack(fill="x")
+        self._floor_hint = floorf.winfo_children()[-1]
+        floor_scale = tk.Scale(
+            floorf,
+            from_=0.008,
+            to=0.040,
+            resolution=0.001,
+            orient="horizontal",
+            variable=self.floor_var,
+            bg=BG,
+            fg=WHITE,
+            troughcolor=CARD,
+            highlightthickness=0,
+            length=420,
+        )
+        floor_scale.pack(fill="x", pady=(4, 0))
+        floor_scale.bind("<ButtonRelease-1>", self._save_floor)
+
         self.memory_label = tk.Label(
             parent,
             text="No saved words yet.",
@@ -430,6 +470,8 @@ class Overlay:
         widgets = [self.you, self.bot, self.hint, self.settings_status, self.memory_label, self._settings_intro]
         if hasattr(self, "_wait_hint"):
             widgets.append(self._wait_hint)
+        if hasattr(self, "_floor_hint"):
+            widgets.append(self._floor_hint)
         for widget in widgets:
             try:
                 widget.configure(wraplength=wrap)
@@ -489,6 +531,13 @@ class Overlay:
         self.settings_status.configure(text=message, fg=GREEN)
         self._refresh_memory()
 
+    def _save_floor(self, _event: tk.Event | None = None) -> None:  # noqa: ANN001
+        if not self.on_voice_floor:
+            return
+        message = self.on_voice_floor(float(self.floor_var.get()))
+        self.settings_status.configure(text=message, fg=GREEN)
+        self._refresh_memory()
+
     def _refresh_memory(self) -> None:
         if not self.on_snapshot:
             return
@@ -497,6 +546,12 @@ class Overlay:
         if wait is not None:
             try:
                 self.wait_var.set(float(wait))
+            except (TypeError, ValueError):
+                pass
+        floor = snap.get("voice_floor")
+        if floor is not None and hasattr(self, "floor_var"):
+            try:
+                self.floor_var.set(float(floor))
             except (TypeError, ValueError):
                 pass
         lines = []
@@ -533,9 +588,9 @@ class Overlay:
         def apply() -> None:
             armed = bool(snapshot.get("armed"))
             color = PHASE_COLOR.get(snapshot["phase"], GREEN)
-            label = "LISTENING" if armed else "STANDBY"
+            label = "LISTENING" if armed else "SLEEP"
             self.badge.configure(text=label, bg=color, fg=BG if armed else WHITE)
-            self.phase_label.configure(text="Saltvoice", fg=WHITE)
+            self.phase_label.configure(text="Saltvoice Local", fg=WHITE)
             target = str(snapshot.get("target") or "grok")
             self.target_label.configure(text="→ front window" if target == "here" else "→ Grok Bot")
             user = (snapshot.get("user_text") or "").strip()
@@ -546,11 +601,11 @@ class Overlay:
                     self.heard_var.set(user)
                 self.you.configure(text=user[:400])
             elif not armed:
-                self.you.configure(text=status[:400] or "Standby. Say Salt wake up when you want me to listen.")
+                self.you.configure(text=status[:400] or "Sleeping. Mic is off. Press Wake or Ctrl+Alt+G.")
             elif status:
                 self.you.configure(text=status[:400])
             if not armed:
-                self.bot.configure(text="Not sending to any app. Conversation in the room stays private.")
+                self.bot.configure(text="Mic off. Nothing is sent. Press Wake or Ctrl+Alt+G to listen.")
             elif status and ("HANDOFF" in status or "Sent" in status or "TASK" in status):
                 self.bot.configure(text=status[:400])
             elif _event == "handoff":

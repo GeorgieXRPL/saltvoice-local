@@ -27,6 +27,7 @@ commands:
 
 settings:
   finish_wait_seconds: 2.2
+  voice_floor: 0.018
 """
 
 
@@ -39,6 +40,7 @@ class Brain:
         self.shortcuts: dict[str, str] = {}
         self.commands: dict[str, str] = {}
         self.finish_wait = 2.2
+        self.voice_floor = 0.018
         self.load()
 
     def load(self) -> None:
@@ -61,6 +63,11 @@ class Brain:
         except (TypeError, ValueError):
             self.finish_wait = 2.2
         self.finish_wait = max(0.8, min(4.0, self.finish_wait))
+        try:
+            self.voice_floor = float(settings.get("voice_floor") or 0.018)
+        except (TypeError, ValueError):
+            self.voice_floor = 0.018
+        self.voice_floor = max(0.008, min(0.04, self.voice_floor))
         self._push_into_phrases()
         log.info(
             "brain: %s correction(s), %s shortcut(s), %s command(s) from %s",
@@ -75,7 +82,10 @@ class Brain:
             "corrections": self.corrections,
             "shortcuts": self.shortcuts,
             "commands": self.commands,
-            "settings": {"finish_wait_seconds": self.finish_wait},
+            "settings": {
+                "finish_wait_seconds": self.finish_wait,
+                "voice_floor": self.voice_floor,
+            },
         }
         self.path.write_text(
             yaml.safe_dump(payload, sort_keys=False, allow_unicode=True),
@@ -126,12 +136,22 @@ class Brain:
         self.save()
         return f"Wait {self.finish_wait:.1f}s after you stop talking before sending."
 
+    def set_voice_floor(self, value: float) -> str:
+        try:
+            floor = float(value)
+        except (TypeError, ValueError):
+            return "Mic sensitivity must be a number."
+        self.voice_floor = max(0.008, min(0.04, floor))
+        self.save()
+        return f"Mic now ignores quieter room noise (floor {self.voice_floor:.3f})."
+
     def snapshot(self) -> dict[str, Any]:
         return {
             "corrections": dict(self.corrections),
             "shortcuts": dict(self.shortcuts),
             "commands": dict(self.commands),
             "finish_wait": self.finish_wait,
+            "voice_floor": self.voice_floor,
             "path": str(self.path),
         }
 

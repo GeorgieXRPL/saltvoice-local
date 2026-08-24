@@ -62,25 +62,27 @@ class VoiceSession:
                 self.wake.enter_listen()
             else:
                 self.wake.enter_sleep()
+        if self.audio:
+            self.audio.mic.arm(bool(value))
         if value:
             self._last_user_activity = time.monotonic()
-            log.info("armed — listening; say Salt go on standby when you are done")
+            log.info("armed — listening; say Salt go to sleep when you are done")
             self.hub.emit(
                 "arm",
                 phase=Phase.LISTENING,
                 armed=True,
-                status_line="Listening. Speak a task. Say Salt go on standby when you finish.",
+                status_line="Listening. Speak a task. Say Salt go to sleep when you finish — that turns the mic off.",
                 target=self.worker.target,
             )
         else:
-            log.info("standby — not pasting; still listening for Salt wake up")
+            log.info("sleep — microphone off; not transcribing")
             self.hub.emit(
                 "arm",
                 phase=Phase.SLEEPING,
                 armed=False,
                 user_text="",
                 assistant_text="",
-                status_line="Standby. Say Salt wake up when you want me to listen.",
+                status_line="Sleeping. Mic is off. Press Wake or Ctrl+Alt+G. Kitchen talk is not heard.",
                 target=self.worker.target,
             )
 
@@ -90,6 +92,7 @@ class VoiceSession:
             self._pump_task = asyncio.create_task(self._mic_pump(), name="mic-pump")
         if self.wake is None:
             wait = float(getattr(self.brain, "finish_wait", 2.2) or 2.2) if self.brain else 2.2
+            floor = float(getattr(self.brain, "voice_floor", 0.018) or 0.018) if self.brain else 0.018
             self.wake = WakeWatcher(
                 language=self.settings.language,
                 on_wake=lambda: self.arm(True),
@@ -98,6 +101,7 @@ class VoiceSession:
                 on_text=lambda text: self.hub.emit("wake-stt", user_text=text, status_line=f"Heard: {text}"),
                 on_target=self.set_target,
                 finish_wait=wait,
+                voice_floor=floor,
             )
         if self._sleep_task is None:
             self._sleep_task = asyncio.create_task(self._auto_sleep(), name="auto-sleep")
@@ -132,6 +136,10 @@ class VoiceSession:
     def set_finish_wait(self, seconds: float) -> None:
         if self.wake:
             self.wake.finish_wait = max(0.8, min(4.0, float(seconds)))
+
+    def set_voice_floor(self, value: float) -> None:
+        if self.wake:
+            self.wake.voice_floor = max(0.008, min(0.04, float(value)))
 
     async def set_target(self, target: str) -> None:
         self.worker.target = target

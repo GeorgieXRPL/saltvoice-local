@@ -89,8 +89,8 @@ def _banner() -> None:
     print("======== SALTVOICE LOCAL ========", flush=True)
     print("Offline. No API key. Whisper runs on this PC.", flush=True)
     print("Look for a window titled  Saltvoice Local  at the TOP of the screen.", flush=True)
-    print("Start:  Salt wake up", flush=True)
-    print("Pause:  Salt go on standby   (this is NOT sent to Grok Bot)", flush=True)
+    print("Start:  press Wake or Ctrl+Alt+G  (mic stays off until then)", flush=True)
+    print("Pause:  Salt go to sleep / Salt go on standby / bye   (mic OFF, kitchen is not heard)", flush=True)
     print("Also:   Salt send to grok    or    Salt send here", flush=True)
     print("Or press Ctrl+Alt+G.  Ctrl+Alt+H shows the overlay.  Ctrl+Alt+X quits.", flush=True)
     print("Default: spoken tasks are pasted into Grok Bot.", flush=True)
@@ -101,9 +101,9 @@ def _banner() -> None:
 
 def _console_mirror(_event: str, snapshot: dict) -> None:
     if _event == "arm" and snapshot.get("armed"):
-        safe_print("LISTENING. Speak a task. Standby: Salt go on standby", flush=True)
+        safe_print("LISTENING. Speak a task. Sleep: Salt go to sleep", flush=True)
     if _event == "arm" and not snapshot.get("armed"):
-        safe_print("STANDBY. Waiting for: Salt wake up", flush=True)
+        safe_print("SLEEP. Mic off. Press Wake or Ctrl+Alt+G.", flush=True)
     if _event == "target":
         safe_print(f"TARGET: {snapshot.get('status_line')}", flush=True)
     if _event == "wake-stt" and snapshot.get("user_text") and snapshot.get("armed"):
@@ -194,8 +194,8 @@ def run(*, check: bool = False) -> int:
     audio = AudioBridge(loop)
     try:
         audio.start()
-        audio.mic.arm(True)
-        print("Microphone is on and waiting for: Salt wake up", flush=True)
+        audio.mic.arm(False)
+        print("Sleeping. Microphone is off until you press Wake or Ctrl+Alt+G.", flush=True)
     except Exception as exc:
         hub.emit("error", phase=Phase.ERROR, status_line=f"Microphone failed: {exc}")
         log.exception("audio start failed")
@@ -238,7 +238,13 @@ def run(*, check: bool = False) -> int:
             session.set_finish_wait(brain.finish_wait)
             return message
 
+        def _set_floor(value: float) -> str:
+            message = brain.set_voice_floor(value)
+            session.set_voice_floor(brain.voice_floor)
+            return message
+
         overlay.on_finish_wait = _set_wait
+        overlay.on_voice_floor = _set_floor
 
     def toggle() -> None:
         call(session.toggle())
@@ -295,12 +301,12 @@ def run(*, check: bool = False) -> int:
         listener.start()
     except Exception as exc:
         log.exception("hotkeys failed")
-        hub.emit("error", status_line=f"Hotkeys failed ({exc}). Use the tray or the wake phrase.")
+        hub.emit("error", status_line=f"Hotkeys failed ({exc}). Use the tray or overlay Wake.")
 
     hub.emit(
         "ready",
         phase=Phase.SLEEPING,
-        status_line="Standby. Say Salt wake up, then give a task.",
+        status_line="Sleeping. Mic is off. Press Wake or Ctrl+Alt+G.",
         target=settings.handoff_target,
     )
     if overlay is not None:
