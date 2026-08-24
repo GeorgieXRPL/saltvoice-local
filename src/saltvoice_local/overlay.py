@@ -59,6 +59,9 @@ class Overlay:
         self._page = "listen"
         self._last_heard = ""
         self._hub_events: deque[tuple[str, dict]] = deque(maxlen=40)
+        self._ui_calls: deque[Callable[[], None]] = deque()
+        self._topmost_req: bool | None = None
+        self._topmost_ack = threading.Event()
         self.root = tk.Tk()
         self.root.title("Saltvoice Local")
         self.root.configure(bg=BG)
@@ -592,9 +595,23 @@ class Overlay:
         except (tk.TclError, RuntimeError):
             pass
 
+    def run_on_ui(self, fn: Callable[[], None]) -> None:
+        """Queue work for the Tk thread. Safe from asyncio / tray / hotkeys."""
+        self._ui_calls.append(fn)
+
+    def _poll(self) -> None:
+        self._drain_hub()
+        self._apply_topmost_req()
+        while self._ui_calls:
+            fn = self._ui_calls.popleft()
+            try:
+                fn()
+            except Exception:
+                pass
+        self._tk_after(50, self._poll)
+
     def _on_hub(self, _event: str, snapshot: dict) -> None:
         self._hub_events.append((_event, dict(snapshot)))
-        self._tk_after(0, self._drain_hub)
 
     def _drain_hub(self) -> None:
         while self._hub_events:
@@ -631,25 +648,29 @@ class Overlay:
             self.bot.configure(text=status[:400] or user)
 
     def set_topmost(self, value: bool) -> None:
-        done = threading.Event()
-
-        def apply() -> None:
-            try:
-                if value:
-                    self.root.attributes("-topmost", True)
-                    self.root.lift()
-                else:
-                    self.root.attributes("-topmost", False)
-                    self.root.lower()
-            except tk.TclError:
-                pass
-            finally:
-                done.set()
-
-        self._tk_after(0, apply)
+        self._topmost_ack.clear()
+        self._topmost_req = bool(value)
         if threading.current_thread() is threading.main_thread():
+            self._apply_topmost_req()
             return
-        done.wait(timeout=1.0)
+        self._topmost_ack.wait(timeout=1.0)
+
+    def _apply_topmost_req(self) -> None:
+        if self._topmost_req is None:
+            return
+        value = self._topmost_req
+        self._topmost_req = None
+        try:
+            if value:
+                self.root.attributes("-topmost", True)
+                self.root.lift()
+            else:
+                self.root.attributes("-topmost", False)
+                self.root.lower()
+        except tk.TclError:
+            pass
+        finally:
+            self._topmost_ack.set()
 
     def toggle_visible(self) -> None:
         if self._hidden:
@@ -670,7 +691,7 @@ class Overlay:
         self.root.protocol("WM_DELETE_WINDOW", lambda: fn())
 
     def loop(self) -> None:
-        self._tk_after(0, self._drain_hub)
+        self._poll()
         self.root.mainloop()
 
     def shutdown(self) -> None:

@@ -55,9 +55,9 @@ def _setup_logging() -> None:
         noisy.setLevel(logging.WARNING)
         noisy.addFilter(quiet)
     log.info("log file: %s", logfile)
-    log.info("build: listen-on-start-tk (arm after overlay loop)")
+    log.info("build: listen-on-start-poll (Tk only from overlay loop)")
     print(f"LOG FILE: {logfile}", flush=True)
-    print("BUILD: listen-on-start-tk  (opens listening; sleep still mutes)", flush=True)
+    print("BUILD: listen-on-start-poll  (opens listening; sleep still mutes)", flush=True)
 
 
 def _windows_dpi() -> None:
@@ -259,11 +259,11 @@ def run(*, check: bool = False) -> int:
 
     def toggle_overlay() -> None:
         if overlay is not None:
-            overlay.root.after(0, overlay.toggle_visible)
+            overlay.run_on_ui(overlay.toggle_visible)
 
     def show_settings() -> None:
         if overlay is not None:
-            overlay.root.after(0, overlay.show_settings)
+            overlay.run_on_ui(overlay.show_settings)
 
     async def shutdown() -> None:
         await session.close()
@@ -316,7 +316,7 @@ def run(*, check: bool = False) -> int:
         target=settings.handoff_target,
     )
     if overlay is not None:
-        overlay.root.after(0, lambda: call(session.arm(True)))
+        overlay.run_on_ui(lambda: call(session.arm(True)))
         try:
             overlay.loop()
         finally:
