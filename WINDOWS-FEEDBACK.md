@@ -475,3 +475,21 @@ NameError: name 'sys' is not defined. Did you forget to import 'sys'?
 ```
 
 Saltvoice Local is not running. Need `import sys` in process.py (or equivalent) then we can restart.
+
+## Update 2026-08-24 08:08 PT — 39cce87 auto-listen crash (MyPC)
+
+Pulled `39cce87` Listen as soon as the app opens. Restarted. Overlay appeared. Then:
+
+```
+INFO STT ON
+INFO armed — listening; say Salt go to sleep when you are done
+ERROR start listening
+...
+File overlay.py line 615, in _on_hub
+    self.root.after(0, apply)
+RuntimeError: main thread is not in main loop
+```
+
+session.start_idle / arm emits hub event; overlay tk after() is not on the Tk main thread.
+
+User wants this fixed so listen-on-open works. Sleep must stay deaf (mic/STT off) after Salt go to sleep.
