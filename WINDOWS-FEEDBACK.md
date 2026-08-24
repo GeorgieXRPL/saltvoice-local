@@ -395,3 +395,25 @@ Also pasted `Open crime.` (Chrome).
 Fuzzy Salt (So/Soat/Salts), `bye` / `say bye` as standby, hold-to-finish so a long command is one paste not six.
 
 No API keys. Log: `%LOCALAPPDATA%\SaltvoiceLocal\saltvoice-local.log`
+
+## Update 2026-08-23 21:02 PT — ded969b night session (MyPC)
+
+Pulled `ded969b` (fuzzy wake/standby, hold until speech finishes, Settings on overlay) and restarted 20:45. tiny.en. User asked to upload these logs.
+
+### Hold-until-finish works
+
+Long lines stayed one paste, e.g. overlay request (40 chars), Streamlabs, FF7 gifts line, and the 156-char “have a look at the overlays…” line. Draft + 2.2s wait then `finished speaking`.
+
+### Filler is a bit hungry
+
+`Are you online?` and `That's it.` and `G-I-F.` were `filler (not pasted)`. The follow-up `All you run on.` (meant “are you online / running”) did paste. Fine for junk, bad if the user is asking a short status question.
+
+### Wake / standby
+
+Exact `Salt wake up.` armed twice. Later `standby` then `Salt wake up.` again at 21:01. No Soat/So wake samples in this stretch.
+
+### Still requested
+
+Do not treat short status questions (`are you online`, `are you running`) as filler. Keep hold-to-finish. Fuzzy Salt still wanted for So/Soat.
+
+No API keys. Log: `%LOCALAPPDATA%\SaltvoiceLocal\saltvoice-local.log`
