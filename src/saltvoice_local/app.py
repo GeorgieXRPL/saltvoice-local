@@ -11,7 +11,6 @@ from pathlib import Path
 from saltvoice_local.config import app_data_dir, describe_setup, load_settings
 from saltvoice_local.process import acquire_single_instance, configure_stdio, safe_print
 from saltvoice_local.state import Hub, Phase
-from saltvoice_local.stt import set_listening
 
 log = logging.getLogger("saltvoice_local")
 
@@ -56,9 +55,9 @@ def _setup_logging() -> None:
         noisy.setLevel(logging.WARNING)
         noisy.addFilter(quiet)
     log.info("log file: %s", logfile)
-    log.info("build: sleep-stream-off (standby stops mic stream + Whisper)")
+    log.info("build: listen-on-start (sleep still mutes mic + Whisper)")
     print(f"LOG FILE: {logfile}", flush=True)
-    print("BUILD: sleep-stream-off  (standby = mic stream OFF, STT OFF)", flush=True)
+    print("BUILD: listen-on-start  (opens listening; sleep still mutes)", flush=True)
 
 
 def _windows_dpi() -> None:
@@ -92,7 +91,7 @@ def _banner() -> None:
     print("======== SALTVOICE LOCAL ========", flush=True)
     print("Offline. No API key. Whisper runs on this PC.", flush=True)
     print("Look for a window titled  Saltvoice Local  at the TOP of the screen.", flush=True)
-    print("Start:  press Wake or Ctrl+Alt+G  (mic stays off until then)", flush=True)
+    print("Start:  listening as soon as it opens. Speak a task.", flush=True)
     print("Pause:  Salt go to sleep / Salt go on standby / bye   (mic OFF, kitchen is not heard)", flush=True)
     print("Also:   Salt send to grok    or    Salt send here", flush=True)
     print("Or press Ctrl+Alt+G.  Ctrl+Alt+H shows the overlay.  Ctrl+Alt+X quits.", flush=True)
@@ -198,9 +197,7 @@ def run(*, check: bool = False) -> int:
     audio = AudioBridge(loop)
     try:
         audio.start()
-        audio.mic.arm(False)
-        set_listening(False)
-        print("Sleeping. Microphone stream is off until you press Wake or Ctrl+Alt+G.", flush=True)
+        print("Microphone is on. Listening as soon as the session starts.", flush=True)
     except Exception as exc:
         hub.emit("error", phase=Phase.ERROR, status_line=f"Microphone failed: {exc}")
         log.exception("audio start failed")
@@ -224,7 +221,11 @@ def run(*, check: bool = False) -> int:
     if not ready.wait(timeout=5):
         raise RuntimeError("Timed out starting the session loop")
     session = session_holder["s"]
-    asyncio.run_coroutine_threadsafe(session.start_idle(), loop)
+    try:
+        asyncio.run_coroutine_threadsafe(session.start_idle(), loop).result(timeout=15)
+    except Exception:
+        log.exception("start listening")
+        print("Could not arm the microphone automatically. Press Wake or Ctrl+Alt+G.", flush=True)
 
     def call(coro) -> None:
         asyncio.run_coroutine_threadsafe(coro, loop)
@@ -310,8 +311,9 @@ def run(*, check: bool = False) -> int:
 
     hub.emit(
         "ready",
-        phase=Phase.SLEEPING,
-        status_line="Sleeping. Mic is off. Press Wake or Ctrl+Alt+G.",
+        phase=Phase.LISTENING,
+        armed=True,
+        status_line="Listening. Speak a task. Say Salt go to sleep when you finish.",
         target=settings.handoff_target,
     )
     if overlay is not None:

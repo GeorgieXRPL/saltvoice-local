@@ -117,7 +117,7 @@ def describe_setup(settings: Settings) -> list[str]:
         f"Default target: {settings.handoff_target}",
         f"Workspace: {settings.workspace_path}"
         + (" (exists)" if settings.workspace_path.exists() else " (folder missing)"),
-        "Wake: press Wake or Ctrl+Alt+G (mic off until then)",
+        "Starts listening as soon as it opens",
         "Sleep: Salt go to sleep  (mic off — kitchen is not heard)",
         f"Python: {sys.version.split()[0]}",
     ]

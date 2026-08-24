@@ -47,7 +47,7 @@ title Saltvoice Local
 echo.
 echo Saltvoice Local is starting. Offline Whisper — no API key.
 echo Look for a window titled Saltvoice Local at the TOP of the screen.
-echo Starts SLEEP (mic stream off). Wake: overlay Wake or Ctrl+Alt+G.
+echo Starts LISTENING. Speak a task. Sleep: Salt go to sleep / standby / bye.
 echo Sleep: Salt go to sleep / standby / bye  — STT stops, mic stream closes.
 echo Keep this window open.
 echo.

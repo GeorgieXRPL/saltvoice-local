@@ -81,9 +81,9 @@ class Overlay:
         top.pack(fill="x", padx=16, pady=(12, 4))
         self.badge = tk.Label(
             top,
-            text="SLEEP",
+            text="LISTENING",
             fg=BG,
-            bg=DIM,
+            bg=GREEN,
             font=("Segoe UI", 11, "bold"),
             padx=12,
             pady=4,
@@ -123,7 +123,7 @@ class Overlay:
 
         self.hint = tk.Label(
             header,
-            text="Sleeping: mic is off. Press Wake or Ctrl+Alt+G. Say Salt go to sleep while listening to mute it again. Settings has mic sensitivity.",
+            text="Listening. Speak a task. Say Salt go to sleep to mute the mic. Settings has mic sensitivity.",
             fg=DIM,
             bg=PANEL,
             font=("Segoe UI", 9),
@@ -146,7 +146,7 @@ class Overlay:
         self.listen_page = tk.Frame(body, bg=BG)
         self.settings_page = tk.Frame(body, bg=BG)
         self.you = self._card(self.listen_page, "You said", "(waiting)")
-        self.bot = self._card(self.listen_page, "Sent to Grok Bot", "Nothing yet. Wake me, then speak a task.")
+        self.bot = self._card(self.listen_page, "Sent to Grok Bot", "Nothing yet. Speak a task.")
         self._build_settings(self.settings_page)
         self.listen_page.pack(fill="both", expand=True)
 
