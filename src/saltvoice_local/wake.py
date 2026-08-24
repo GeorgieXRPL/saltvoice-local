@@ -62,12 +62,12 @@ class WakeWatcher:
 
     def enter_sleep(self) -> None:
         self.listening = False
-        self.enabled = False
+        self.enabled = True
         self.reset()
         self._pending = ""
         self._abandon_draft()
         self._mute_until = time.monotonic() + 1.2
-        log.info("wake watcher deaf — no STT until Wake / Ctrl+Alt+G")
+        log.info("standby — wake word only; say Salt wake up")
 
     def enter_listen(self) -> None:
         self.listening = True
@@ -78,14 +78,13 @@ class WakeWatcher:
         self._mute_until = 0.0
 
     def _max_seconds(self) -> float:
-        return 24.0
+        return 5.0 if not self.listening else 24.0
 
     def _voice_floor(self) -> float:
         return self.voice_floor
 
     def _hangover(self) -> float:
-        # Stay open long enough that a mid-sentence breath does not split one request.
-        return 1.55
+        return 0.7 if not self.listening else 1.55
 
     def _cancel_flush(self) -> None:
         task = self._flush_task
@@ -99,8 +98,7 @@ class WakeWatcher:
         self._draft_started = 0.0
 
     async def feed(self, pcm: bytes) -> None:
-        # Sleep / standby is deaf: no Whisper, no holding kitchen talk.
-        if not self.enabled or not self.listening:
+        if not self.enabled:
             return
         now = time.monotonic()
         if now < self._mute_until:
@@ -138,16 +136,39 @@ class WakeWatcher:
 
     async def _handle_blob(self, blob: bytes, duration: float, min_rms: float) -> None:
         try:
-            if not self.enabled or not self.listening:
+            if not self.enabled:
                 return
             text = await asyncio.to_thread(transcribe_pcm, blob, SAMPLE_RATE, self.language, min_rms)
             if not text:
                 return
-            if not self.enabled or not self.listening:
-                log.info("stt: %r dropped (went to sleep)", text)
+            if not self.enabled:
                 return
             now = time.monotonic()
+            if (not self.listening) and self._pending and now - self._pending_at < 3.2:
+                text = f"{self._pending} {text}".strip()
+                log.info("stt joined fragment → %r", text)
+                self._pending = ""
             kind = classify_utterance(text)
+            if not self.listening:
+                if kind == "wake":
+                    log.info("stt: %r wake — listening", text)
+                    self._abandon_draft()
+                    self.enter_listen()
+                    await self.on_wake()
+                    rest = remainder_after_wake(text)
+                    if rest and self.on_utterance:
+                        log.info("stt: %r wake+task", rest)
+                        await self.on_utterance(rest)
+                    return
+                if is_incomplete_utterance(text):
+                    self._pending = text
+                    self._pending_at = now
+                    log.info("stt: %r holding for Salt wake up", text)
+                    return
+                if now - self._last_standby_note >= 20:
+                    log.info("standby — say Salt wake up (not sending %r)", text)
+                    self._last_standby_note = now
+                return
             if kind == "standby":
                 log.info("stt: %r standby — not sending to any app", text)
                 self._abandon_draft()

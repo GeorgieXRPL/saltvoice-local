@@ -128,7 +128,7 @@ class Overlay:
 
         self.hint = tk.Label(
             header,
-            text="Listening. Speak a task. Say Salt go to sleep to mute the mic. Settings has mic sensitivity.",
+            text="Listening. Speak a task. Standby: say Salt go to sleep, then Salt wake up to come back.",
             fg=DIM,
             bg=PANEL,
             font=("Segoe UI", 9),
@@ -624,7 +624,7 @@ class Overlay:
     def _apply_hub(self, _event: str, snapshot: dict) -> None:
         armed = bool(snapshot.get("armed"))
         color = PHASE_COLOR.get(snapshot["phase"], GREEN)
-        label = "LISTENING" if armed else "SLEEP"
+        label = "LISTENING" if armed else "STANDBY"
         self.badge.configure(text=label, bg=color, fg=BG if armed else WHITE)
         self.phase_label.configure(text="Saltvoice Local", fg=WHITE)
         target = str(snapshot.get("target") or "grok")
@@ -637,11 +637,11 @@ class Overlay:
                 self.heard_var.set(user)
             self.you.configure(text=user[:400])
         elif not armed:
-            self.you.configure(text=status[:400] or "Sleeping. Mic is off. Press Wake or Ctrl+Alt+G.")
+            self.you.configure(text=status[:400] or "Standby. Say Salt wake up.")
         elif status:
             self.you.configure(text=status[:400])
         if not armed:
-            self.bot.configure(text="Mic off. Nothing is sent. Press Wake or Ctrl+Alt+G to listen.")
+            self.bot.configure(text="Not sending tasks. Say Salt wake up, or press Wake.")
         elif status and ("HANDOFF" in status or "Sent" in status or "TASK" in status):
             self.bot.configure(text=status[:400])
         elif _event == "handoff":

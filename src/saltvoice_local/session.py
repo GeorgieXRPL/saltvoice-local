@@ -58,15 +58,14 @@ class VoiceSession:
 
     async def arm(self, value: bool) -> None:
         self._armed = value
-        # Gate Whisper before touching the mic so an in-flight clip cannot log holding.
-        set_listening(bool(value))
+        set_listening(True)
         if self.wake:
             if value:
                 self.wake.enter_listen()
             else:
                 self.wake.enter_sleep()
         if self.audio:
-            self.audio.mic.arm(bool(value))
+            self.audio.mic.arm(True)
             if not value:
                 self.audio.drain()
         if value:
@@ -76,18 +75,18 @@ class VoiceSession:
                 "arm",
                 phase=Phase.LISTENING,
                 armed=True,
-                status_line="Listening. Speak a task. Say Salt go to sleep when you finish — that turns the mic off.",
+                status_line="Listening. Speak a task. Say Salt go to sleep when you finish.",
                 target=self.worker.target,
             )
         else:
-            log.info("sleep — microphone stream stopped; STT off")
+            log.info("standby — say Salt wake up; tasks are not sent")
             self.hub.emit(
                 "arm",
                 phase=Phase.SLEEPING,
                 armed=False,
                 user_text="",
                 assistant_text="",
-                status_line="Sleeping. Mic stream is off. Press Wake or Ctrl+Alt+G. Kitchen talk is not heard.",
+                status_line="Standby. Say Salt wake up. Tasks are not sent.",
                 target=self.worker.target,
             )
 
@@ -125,7 +124,7 @@ class VoiceSession:
                 pcm = await asyncio.wait_for(self.audio.outgoing.get(), timeout=0.25)
             except asyncio.TimeoutError:
                 continue
-            if self._armed and self.wake:
+            if self.wake:
                 await self.wake.feed(pcm)
 
     async def _auto_sleep(self) -> None:

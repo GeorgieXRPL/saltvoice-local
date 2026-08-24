@@ -55,9 +55,9 @@ def _setup_logging() -> None:
         noisy.setLevel(logging.WARNING)
         noisy.addFilter(quiet)
     log.info("log file: %s", logfile)
-    log.info("build: listen-on-start-poll (Tk only from overlay loop)")
+    log.info("build: wake-word-standby (say Salt wake up)")
     print(f"LOG FILE: {logfile}", flush=True)
-    print("BUILD: listen-on-start-poll  (opens listening; sleep still mutes)", flush=True)
+    print("BUILD: wake-word-standby  (standby hears Salt wake up)", flush=True)
 
 
 def _windows_dpi() -> None:
@@ -92,7 +92,7 @@ def _banner() -> None:
     print("Offline. No API key. Whisper runs on this PC.", flush=True)
     print("Look for a window titled  Saltvoice Local  at the TOP of the screen.", flush=True)
     print("Start:  listening as soon as it opens. Speak a task.", flush=True)
-    print("Pause:  Salt go to sleep / Salt go on standby / bye   (mic OFF, kitchen is not heard)", flush=True)
+    print("Pause:  Salt go to sleep / standby / bye   (say Salt wake up to come back)", flush=True)
     print("Also:   Salt send to grok    or    Salt send here", flush=True)
     print("Or press Ctrl+Alt+G.  Ctrl+Alt+H shows the overlay.  Ctrl+Alt+X quits.", flush=True)
     print("Default: spoken tasks are pasted into Grok Bot.", flush=True)
@@ -105,7 +105,7 @@ def _console_mirror(_event: str, snapshot: dict) -> None:
     if _event == "arm" and snapshot.get("armed"):
         safe_print("LISTENING. Speak a task. Sleep: Salt go to sleep", flush=True)
     if _event == "arm" and not snapshot.get("armed"):
-        safe_print("SLEEP. Mic stream off. STT off. Press Wake or Ctrl+Alt+G.", flush=True)
+        safe_print("STANDBY. Say Salt wake up. Tasks are not sent.", flush=True)
     if _event == "target":
         safe_print(f"TARGET: {snapshot.get('status_line')}", flush=True)
     if _event == "wake-stt" and snapshot.get("user_text") and snapshot.get("armed"):

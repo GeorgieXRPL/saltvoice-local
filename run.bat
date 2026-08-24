@@ -47,8 +47,8 @@ title Saltvoice Local
 echo.
 echo Saltvoice Local is starting. Offline Whisper — no API key.
 echo Look for a window titled Saltvoice Local at the TOP of the screen.
-echo Starts LISTENING. Speak a task. Sleep: Salt go to sleep / standby / bye.
-echo Sleep: Salt go to sleep / standby / bye  — STT stops, mic stream closes.
+echo Starts LISTENING. Speak a task.
+echo Standby: Salt go to sleep / bye — then say Salt wake up (no click needed).
 echo Keep this window open.
 echo.
 python -m saltvoice_local %*

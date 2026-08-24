@@ -20,7 +20,7 @@ _stt_on = False
 
 
 def set_listening(on: bool) -> None:
-    """Hard gate: Whisper must not run while sleeping / on standby."""
+    """Whisper on while the app is running, including standby wake-word mode."""
     global _stt_on
     _stt_on = bool(on)
     log.info("STT %s", "ON" if _stt_on else "OFF — Whisper will not run")

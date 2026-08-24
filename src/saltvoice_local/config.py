@@ -118,6 +118,6 @@ def describe_setup(settings: Settings) -> list[str]:
         f"Workspace: {settings.workspace_path}"
         + (" (exists)" if settings.workspace_path.exists() else " (folder missing)"),
         "Starts listening as soon as it opens",
-        "Sleep: Salt go to sleep  (mic off — kitchen is not heard)",
+        "Sleep: Salt go to sleep  (say Salt wake up to listen again)",
         f"Python: {sys.version.split()[0]}",
     ]
