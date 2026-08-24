@@ -493,3 +493,52 @@ RuntimeError: main thread is not in main loop
 session.start_idle / arm emits hub event; overlay tk after() is not on the Tk main thread.
 
 User wants this fixed so listen-on-open works. Sleep must stay deaf (mic/STT off) after Salt go to sleep.
+
+## Update 2026-08-24 08:13 PT — full listen-on-start traceback (MyPC)
+
+Still on `06b2626` / `39cce87`. No newer app commits. User asked to update git and push again. Last log write 08:07:31. Full ERROR:
+
+```
+2026-08-24 07:58:08,484 INFO loading local Whisper tiny.en (cpu/int8)â€¦
+2026-08-24 07:58:09,832 INFO Whisper ready
+2026-08-24 07:58:10,135 INFO brain: 0 correction(s), 0 shortcut(s), 0 command(s) from C:\Users\justa\AppData\Local\SaltvoiceLocal\brain.yaml
+2026-08-24 07:58:10,325 INFO STT OFF â€” Whisper will not run
+2026-08-24 07:59:31,645 INFO log file: C:\Users\justa\AppData\Local\SaltvoiceLocal\saltvoice-local.log
+2026-08-24 07:59:31,645 INFO build: sleep-stream-off (standby stops mic stream + Whisper)
+2026-08-24 07:59:31,794 INFO loading local Whisper tiny.en (cpu/int8)â€¦
+2026-08-24 07:59:32,953 INFO Whisper ready
+2026-08-24 07:59:33,151 INFO brain: 0 correction(s), 0 shortcut(s), 0 command(s) from C:\Users\justa\AppData\Local\SaltvoiceLocal\brain.yaml
+2026-08-24 07:59:33,304 INFO STT OFF â€” Whisper will not run
+2026-08-24 08:07:29,153 INFO log file: C:\Users\justa\AppData\Local\SaltvoiceLocal\saltvoice-local.log
+2026-08-24 08:07:29,154 INFO build: listen-on-start (sleep still mutes mic + Whisper)
+2026-08-24 08:07:29,377 INFO loading local Whisper tiny.en (cpu/int8)â€¦
+2026-08-24 08:07:30,567 INFO Whisper ready
+2026-08-24 08:07:30,792 INFO brain: 0 correction(s), 0 shortcut(s), 0 command(s) from C:\Users\justa\AppData\Local\SaltvoiceLocal\brain.yaml
+2026-08-24 08:07:30,892 INFO STT ON
+2026-08-24 08:07:30,893 INFO armed â€” listening; say Salt go to sleep when you are done
+2026-08-24 08:07:31,900 ERROR start listening
+Traceback (most recent call last):
+  File "C:\Users\justa\saltvoice-local\src\saltvoice_local\app.py", line 225, in run
+    asyncio.run_coroutine_threadsafe(session.start_idle(), loop).result(timeout=15)
+  File "C:\Program Files\Python312\Lib\concurrent\futures\_base.py", line 456, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python312\Lib\concurrent\futures\_base.py", line 401, in __get_result
+    raise self._exception
+  File "C:\Users\justa\saltvoice-local\src\saltvoice_local\session.py", line 114, in start_idle
+    await self.arm(True)
+  File "C:\Users\justa\saltvoice-local\src\saltvoice_local\session.py", line 75, in arm
+    self.hub.emit(
+  File "C:\Users\justa\saltvoice-local\src\saltvoice_local\state.py", line 52, in emit
+    fn(event, snapshot)
+  File "C:\Users\justa\saltvoice-local\src\saltvoice_local\overlay.py", line 615, in _on_hub
+    self.root.after(0, apply)
+  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 873, in after
+    name = self._register(callit)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 1604, in _register
+    self.tk.createcommand(name, f)
+RuntimeError: main thread is not in main loop
+```
+
+Still need: listen-on-open without `main thread is not in main loop`. Sleep stays mute.
