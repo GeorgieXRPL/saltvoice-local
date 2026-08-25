@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import tkinter as tk
+import tkinter.font as tkfont
 import threading
 from collections import deque
 from typing import Any, Callable
 
 from saltvoice_local.state import Hub, Phase
+
+APP_TITLE = "Saltvoice Local"
+BUILD = "compact-hud"
+LISTEN_W, LISTEN_H = 720, 292
+SETTINGS_W, SETTINGS_H = 740, 680
 
 BG = "#071018"
 PANEL = "#122433"
@@ -17,6 +23,8 @@ GOLD = "#f4c15d"
 WHITE = "#f4fbff"
 BTN = "#1b3a4e"
 BTN_ON = "#1f5c3a"
+LISTEN_HINT = "Listening. Speak a task. Say Salt go to sleep when the kitchen should be ignored."
+STANDBY_HINT = "Standby. Kitchen is not pasted. Say Salt wake up."
 
 PHASE_COLOR = {
     Phase.SLEEPING: DIM,
@@ -26,6 +34,26 @@ PHASE_COLOR = {
     Phase.WORKING: GOLD,
     Phase.ERROR: ERR,
 }
+
+_FONT_CANDIDATES = (
+    "Segoe UI",
+    "Ubuntu",
+    "Noto Sans",
+    "DejaVu Sans",
+    "Liberation Sans",
+    "Sans",
+)
+
+
+def _pick_font_family(root: tk.Tk) -> str:
+    try:
+        names = set(tkfont.families(root))
+    except tk.TclError:
+        return "Segoe UI"
+    for name in _FONT_CANDIDATES:
+        if name in names:
+            return name
+    return "TkDefaultFont"
 
 
 class Overlay:
@@ -63,7 +91,8 @@ class Overlay:
         self._topmost_req: bool | None = None
         self._topmost_ack = threading.Event()
         self.root = tk.Tk()
-        self.root.title("Saltvoice Local")
+        self._font_family = _pick_font_family(self.root)
+        self.root.title(APP_TITLE)
         self.root.configure(bg=BG)
         self.root.attributes("-topmost", True)
         self.root.resizable(True, True)
@@ -72,34 +101,29 @@ class Overlay:
         except tk.TclError:
             pass
 
-        width, height = 760, 620
-        self.root.update_idletasks()
-        screen_w = self.root.winfo_screenwidth()
-        x = max(12, (screen_w - width) // 2)
-        y = 12
-        self.root.geometry(f"{width}x{height}+{x}+{y}")
-        self.root.minsize(640, 480)
+        self._accent = tk.Frame(self.root, bg=GREEN, height=3)
+        self._accent.pack(fill="x")
 
         header = tk.Frame(self.root, bg=PANEL)
         header.pack(fill="x")
         top = tk.Frame(header, bg=PANEL)
-        top.pack(fill="x", padx=16, pady=(12, 4))
+        top.pack(fill="x", padx=16, pady=(10, 2))
         self.badge = tk.Label(
             top,
             text="LISTENING",
             fg=BG,
             bg=GREEN,
-            font=("Segoe UI", 11, "bold"),
-            padx=12,
-            pady=4,
+            font=self._f(10, "bold"),
+            padx=10,
+            pady=3,
         )
         self.badge.pack(side="left")
         self.phase_label = tk.Label(
             top,
-            text="Saltvoice Local",
+            text=APP_TITLE,
             fg=WHITE,
             bg=PANEL,
-            font=("Segoe UI", 16, "bold"),
+            font=self._f(14, "bold"),
             anchor="w",
         )
         self.phase_label.pack(side="left", padx=(12, 0))
@@ -111,9 +135,9 @@ class Overlay:
             fg=BG,
             activebackground="#ffd88a",
             relief="flat",
-            font=("Segoe UI", 10, "bold"),
+            font=self._f(10, "bold"),
             padx=14,
-            pady=4,
+            pady=3,
         )
         self._settings_btn.pack(side="right")
         self.target_label = tk.Label(
@@ -121,42 +145,41 @@ class Overlay:
             text="→ Grok Bot",
             fg=GREEN,
             bg=PANEL,
-            font=("Segoe UI", 10),
+            font=self._f(10),
             anchor="e",
         )
         self.target_label.pack(side="right", padx=(0, 12))
 
         self.hint = tk.Label(
             header,
-            text="Listening. Speak a task. Standby: say Salt go to sleep, then Salt wake up to come back.",
+            text=LISTEN_HINT,
             fg=DIM,
             bg=PANEL,
-            font=("Segoe UI", 9),
+            font=self._f(9),
             anchor="w",
-            wraplength=720,
+            wraplength=680,
             justify="left",
         )
-        self.hint.pack(fill="x", padx=16, pady=(0, 8))
-
-        tabs = tk.Frame(header, bg=PANEL)
-        tabs.pack(fill="x", padx=16, pady=(0, 10))
-        self._tab_listen = self._tab_button(tabs, "Listen", lambda: self._show_page("listen"))
-        self._tab_listen.pack(side="left", padx=(0, 6))
-        self._tab_settings = self._tab_button(tabs, "Settings", self.show_settings, accent=True)
-        self._tab_settings.pack(side="left")
+        self.hint.pack(fill="x", padx=16, pady=(0, 10))
 
         body = tk.Frame(self.root, bg=BG)
         body.pack(fill="both", expand=True, padx=16, pady=(4, 0))
 
         self.listen_page = tk.Frame(body, bg=BG)
         self.settings_page = tk.Frame(body, bg=BG)
-        self.you = self._card(self.listen_page, "You said", "(waiting)")
-        self.bot = self._card(self.listen_page, "Sent to Grok Bot", "Nothing yet. Speak a task.")
+        cards = tk.Frame(self.listen_page, bg=BG)
+        cards.pack(fill="both", expand=True)
+        left = tk.Frame(cards, bg=BG)
+        right = tk.Frame(cards, bg=BG)
+        left.pack(side="left", fill="both", expand=True, padx=(0, 6))
+        right.pack(side="left", fill="both", expand=True, padx=(6, 0))
+        self.you = self._card(left, "You said", "(waiting)")
+        self.bot = self._card(right, "Sent to Grok Bot", "Nothing yet. Speak a task.")
         self._build_settings(self.settings_page)
         self.listen_page.pack(fill="both", expand=True)
 
         actions = tk.Frame(self.root, bg=PANEL)
-        actions.pack(fill="x", pady=(10, 0))
+        actions.pack(fill="x", pady=(8, 0))
         inner = tk.Frame(actions, bg=PANEL)
         inner.pack(fill="x", padx=12, pady=8)
         self._action(inner, "Wake", self._do_wake, True).pack(side="left", padx=(0, 6))
@@ -167,30 +190,42 @@ class Overlay:
             text="Ctrl+Alt+G listen   Ctrl+Alt+H hide   Ctrl+Alt+X quit",
             fg=DIM,
             bg=PANEL,
-            font=("Segoe UI", 8),
+            font=self._f(8),
         ).pack(side="right")
 
         self.root.protocol("WM_DELETE_WINDOW", self.hide)
         self.root.bind("<Configure>", self._on_resize)
         self.hub.subscribe(self._on_hub)
-        self._paint_tabs()
+        self._paint_mode()
         self._refresh_memory()
+        self._fit_window("listen", first=True)
         self.root.after(100, self._raise)
-        print(f"SALTVOICE LOCAL overlay at +{x}+{y} size {width}x{height}", flush=True)
-
-    def _tab_button(self, parent: tk.Frame, text: str, cmd: Callable[[], None], accent: bool = False) -> tk.Button:
-        return tk.Button(
-            parent,
-            text=text,
-            command=cmd,
-            bg=GOLD if accent else BTN,
-            fg=BG if accent else WHITE,
-            activebackground="#ffd88a" if accent else "#244a63",
-            relief="flat",
-            font=("Segoe UI", 10, "bold" if accent else "normal"),
-            padx=16,
-            pady=5,
+        print(
+            f"{APP_TITLE.upper()} overlay BUILD {BUILD} font={self._font_family} "
+            f"size {LISTEN_W}x{LISTEN_H}",
+            flush=True,
         )
+
+    def _f(self, size: int, *extra: str) -> tuple:
+        if extra:
+            return (self._font_family, size, *extra)
+        return (self._font_family, size)
+
+    def _fit_window(self, page: str, first: bool = False) -> None:
+        width, height = (SETTINGS_W, SETTINGS_H) if page == "settings" else (LISTEN_W, LISTEN_H)
+        if page == "settings":
+            self.root.minsize(640, 520)
+        else:
+            self.root.minsize(560, 240)
+        self.root.update_idletasks()
+        if first:
+            screen_w = self.root.winfo_screenwidth()
+            x = max(12, (screen_w - width) // 2)
+            y = 12
+        else:
+            x = max(0, self.root.winfo_x())
+            y = max(0, self.root.winfo_y())
+        self.root.geometry(f"{width}x{height}+{x}+{y}")
 
     def _build_settings(self, parent: tk.Frame) -> None:
         intro = tk.Label(
@@ -198,7 +233,7 @@ class Overlay:
             text="SETTINGS — teach it how you talk. Saved here, used the next time you speak. Grok Bot still does the work.",
             fg=GOLD,
             bg=BG,
-            font=("Segoe UI", 10, "bold"),
+            font=self._f(10, "bold"),
             anchor="w",
             wraplength=700,
             justify="left",
@@ -211,15 +246,15 @@ class Overlay:
             text="  1. Teach a word it keeps mishearing  ",
             fg=GOLD,
             bg=BG,
-            font=("Segoe UI", 9, "bold"),
+            font=self._f(9, "bold"),
             padx=8,
             pady=8,
         )
         teach.pack(fill="x", pady=(0, 8))
         row = tk.Frame(teach, bg=BG)
         row.pack(fill="x")
-        tk.Label(row, text="It heard", fg=DIM, bg=BG, font=("Segoe UI", 8)).grid(row=0, column=0, sticky="w")
-        tk.Label(row, text="You meant", fg=DIM, bg=BG, font=("Segoe UI", 8)).grid(row=0, column=1, sticky="w", padx=(8, 0))
+        tk.Label(row, text="It heard", fg=DIM, bg=BG, font=self._f(8)).grid(row=0, column=0, sticky="w")
+        tk.Label(row, text="You meant", fg=DIM, bg=BG, font=self._f(8)).grid(row=0, column=1, sticky="w", padx=(8, 0))
         self.heard_var = tk.StringVar()
         self.meant_var = tk.StringVar()
         self.heard_entry = tk.Entry(row, textvariable=self.heard_var, bg=CARD, fg=WHITE, insertbackground=WHITE, relief="flat")
@@ -236,7 +271,7 @@ class Overlay:
             fg=WHITE,
             activebackground="#2a7a4c",
             relief="flat",
-            font=("Segoe UI", 9, "bold"),
+            font=self._f(9, "bold"),
             padx=12,
             pady=4,
         ).grid(row=1, column=2)
@@ -246,15 +281,15 @@ class Overlay:
             text="  2. Saved task (shortcut)  ",
             fg=GOLD,
             bg=BG,
-            font=("Segoe UI", 9, "bold"),
+            font=self._f(9, "bold"),
             padx=8,
             pady=8,
         )
         short.pack(fill="x", pady=(0, 8))
         srow = tk.Frame(short, bg=BG)
         srow.pack(fill="x")
-        tk.Label(srow, text="You say", fg=DIM, bg=BG, font=("Segoe UI", 8)).grid(row=0, column=0, sticky="w")
-        tk.Label(srow, text="Send this to Grok Bot", fg=DIM, bg=BG, font=("Segoe UI", 8)).grid(row=0, column=1, sticky="w", padx=(8, 0))
+        tk.Label(srow, text="You say", fg=DIM, bg=BG, font=self._f(8)).grid(row=0, column=0, sticky="w")
+        tk.Label(srow, text="Send this to Grok Bot", fg=DIM, bg=BG, font=self._f(8)).grid(row=0, column=1, sticky="w", padx=(8, 0))
         self.short_say = tk.StringVar()
         self.short_task = tk.StringVar()
         tk.Entry(srow, textvariable=self.short_say, bg=CARD, fg=WHITE, insertbackground=WHITE, relief="flat").grid(
@@ -272,7 +307,7 @@ class Overlay:
             bg=BTN,
             fg=WHITE,
             relief="flat",
-            font=("Segoe UI", 9, "bold"),
+            font=self._f(9, "bold"),
             padx=12,
             pady=4,
         ).grid(row=1, column=2)
@@ -282,15 +317,15 @@ class Overlay:
             text="  3. Your own wake / standby phrase  ",
             fg=GOLD,
             bg=BG,
-            font=("Segoe UI", 9, "bold"),
+            font=self._f(9, "bold"),
             padx=8,
             pady=8,
         )
         cmdf.pack(fill="x", pady=(0, 8))
         crow = tk.Frame(cmdf, bg=BG)
         crow.pack(fill="x")
-        tk.Label(crow, text="When you say", fg=DIM, bg=BG, font=("Segoe UI", 8)).grid(row=0, column=0, sticky="w")
-        tk.Label(crow, text="It should", fg=DIM, bg=BG, font=("Segoe UI", 8)).grid(row=0, column=1, sticky="w", padx=(8, 0))
+        tk.Label(crow, text="When you say", fg=DIM, bg=BG, font=self._f(8)).grid(row=0, column=0, sticky="w")
+        tk.Label(crow, text="It should", fg=DIM, bg=BG, font=self._f(8)).grid(row=0, column=1, sticky="w", padx=(8, 0))
         self.cmd_say = tk.StringVar()
         self.cmd_kind = tk.StringVar(value="standby")
         tk.Entry(crow, textvariable=self.cmd_say, bg=CARD, fg=WHITE, insertbackground=WHITE, relief="flat").grid(
@@ -308,7 +343,7 @@ class Overlay:
             bg=BTN,
             fg=WHITE,
             relief="flat",
-            font=("Segoe UI", 9, "bold"),
+            font=self._f(9, "bold"),
             padx=12,
             pady=4,
         ).grid(row=1, column=2)
@@ -318,7 +353,7 @@ class Overlay:
             text="  4. Wait until I finish speaking  ",
             fg=GOLD,
             bg=BG,
-            font=("Segoe UI", 9, "bold"),
+            font=self._f(9, "bold"),
             padx=8,
             pady=8,
         )
@@ -329,7 +364,7 @@ class Overlay:
             text="Seconds of silence before a task is pasted into Grok Bot. Raise this if one request is split into several pastes.",
             fg=DIM,
             bg=BG,
-            font=("Segoe UI", 8),
+            font=self._f(8),
             anchor="w",
             wraplength=680,
             justify="left",
@@ -356,7 +391,7 @@ class Overlay:
             text="  5. Mic sensitivity  ",
             fg=GOLD,
             bg=BG,
-            font=("Segoe UI", 9, "bold"),
+            font=self._f(9, "bold"),
             padx=8,
             pady=8,
         )
@@ -364,10 +399,10 @@ class Overlay:
         self.floor_var = tk.DoubleVar(value=0.018)
         tk.Label(
             floorf,
-            text="How loud you must speak. Raise this if the kitchen or TV is picked up. Sleep still turns the mic fully off.",
+            text="How loud you must speak. Raise this if the kitchen or TV is picked up. Standby still hears Salt wake up.",
             fg=DIM,
             bg=BG,
-            font=("Segoe UI", 8),
+            font=self._f(8),
             anchor="w",
             wraplength=680,
             justify="left",
@@ -394,7 +429,7 @@ class Overlay:
             text="No saved words yet.",
             fg=WHITE,
             bg=CARD,
-            font=("Segoe UI", 9),
+            font=self._f(9),
             anchor="nw",
             justify="left",
             wraplength=700,
@@ -408,7 +443,7 @@ class Overlay:
             text="Tip: if it hears “soat”, save soat → salt. If “bye” should pause, it already does — or add your own phrase above.",
             fg=DIM,
             bg=BG,
-            font=("Segoe UI", 8),
+            font=self._f(8),
             anchor="w",
             wraplength=700,
             justify="left",
@@ -417,21 +452,25 @@ class Overlay:
 
     def _card(self, parent: tk.Frame, title: str, empty: str) -> tk.Label:
         wrap = tk.Frame(parent, bg=CARD)
-        wrap.pack(fill="x", pady=(0, 8))
-        tk.Label(wrap, text=title.upper(), fg=DIM, bg=CARD, font=("Segoe UI", 8, "bold"), anchor="w").pack(
+        wrap.pack(fill="both", expand=True)
+        stripe = tk.Frame(wrap, bg=GREEN, width=3)
+        stripe.pack(side="left", fill="y")
+        inner = tk.Frame(wrap, bg=CARD)
+        inner.pack(side="left", fill="both", expand=True)
+        tk.Label(inner, text=title.upper(), fg=DIM, bg=CARD, font=self._f(8, "bold"), anchor="w").pack(
             fill="x", padx=12, pady=(8, 0)
         )
         label = tk.Label(
-            wrap,
+            inner,
             text=empty,
             fg=WHITE,
             bg=CARD,
-            font=("Segoe UI", 12),
-            wraplength=700,
+            font=self._f(11),
+            wraplength=320,
             justify="left",
             anchor="nw",
         )
-        label.pack(fill="x", padx=12, pady=(2, 10))
+        label.pack(fill="both", expand=True, padx=12, pady=(2, 10))
         return label
 
     def _action(self, parent: tk.Frame, text: str, cmd: Callable[[], None], accent: bool = False) -> tk.Button:
@@ -443,7 +482,7 @@ class Overlay:
             fg=WHITE,
             activebackground="#2a7a4c" if accent else "#244a63",
             relief="flat",
-            font=("Segoe UI", 9),
+            font=self._f(9),
             padx=10,
             pady=3,
         )
@@ -457,29 +496,52 @@ class Overlay:
             self._refresh_memory()
         else:
             self.listen_page.pack(fill="both", expand=True)
-        self._paint_tabs()
+        self._paint_mode()
+        self._fit_window(name)
 
     def show_settings(self) -> None:
         self.show()
         self._show_page("settings")
 
-    def _paint_tabs(self) -> None:
-        listen_on = self._page == "listen"
-        self._tab_listen.configure(bg=BTN_ON if listen_on else BTN, fg=WHITE)
-        self._tab_settings.configure(bg=GOLD if not listen_on else BTN, fg=BG if not listen_on else WHITE)
+    def _show_listen(self) -> None:
+        self._show_page("listen")
+
+    def _paint_mode(self) -> None:
+        if self._page == "settings":
+            self._settings_btn.configure(
+                text="Listen",
+                command=self._show_listen,
+                bg=BTN_ON,
+                fg=WHITE,
+                activebackground="#2a7a4c",
+            )
+        else:
+            self._settings_btn.configure(
+                text="Settings",
+                command=self.show_settings,
+                bg=GOLD,
+                fg=BG,
+                activebackground="#ffd88a",
+            )
 
     def _on_resize(self, event: tk.Event) -> None:  # noqa: ANN001
         if event.widget is not self.root:
             return
-        wrap = max(280, event.width - 56)
-        widgets = [self.you, self.bot, self.hint, self.settings_status, self.memory_label, self._settings_intro]
+        full = max(280, event.width - 56)
+        half = max(180, (event.width - 72) // 2)
+        try:
+            self.you.configure(wraplength=half)
+            self.bot.configure(wraplength=half)
+        except tk.TclError:
+            pass
+        widgets = [self.hint, self.settings_status, self.memory_label, self._settings_intro]
         if hasattr(self, "_wait_hint"):
             widgets.append(self._wait_hint)
         if hasattr(self, "_floor_hint"):
             widgets.append(self._floor_hint)
         for widget in widgets:
             try:
-                widget.configure(wraplength=wrap)
+                widget.configure(wraplength=full)
             except tk.TclError:
                 pass
 
@@ -626,9 +688,11 @@ class Overlay:
         color = PHASE_COLOR.get(snapshot["phase"], GREEN)
         label = "LISTENING" if armed else "STANDBY"
         self.badge.configure(text=label, bg=color, fg=BG if armed else WHITE)
-        self.phase_label.configure(text="Saltvoice Local", fg=WHITE)
+        self._accent.configure(bg=color if armed else DIM)
+        self.phase_label.configure(text=APP_TITLE, fg=WHITE)
         target = str(snapshot.get("target") or "grok")
         self.target_label.configure(text="→ front window" if target == "here" else "→ Grok Bot")
+        self.hint.configure(text=LISTEN_HINT if armed else STANDBY_HINT)
         user = (snapshot.get("user_text") or "").strip()
         status = snapshot.get("status_line") or ""
         if user:
