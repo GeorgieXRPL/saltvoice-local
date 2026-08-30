@@ -66,6 +66,18 @@ TARGET_HERE_PHRASES = (
     "salt send to the front",
 )
 
+# Spoken to Saltvoice only. Never pasted into Grok Bot.
+CLIP_PHRASES = (
+    "salt clip that",
+    "salt clip this",
+    "salt clip it",
+    "salt save clip",
+    "salt grab that",
+    "salt clip",
+    "clip that",
+    "clip this",
+)
+
 FILLERS = frozenset(
     {
         "so",
@@ -371,9 +383,9 @@ def set_user_corrections(mapping: dict[str, str] | None) -> None:
 
 
 def set_command_aliases(mapping: dict[str, str] | None) -> None:
-    """User phrases that mean wake / standby / send here / send to grok."""
+    """User phrases that mean wake / standby / send here / send to grok / clip."""
     global _command_aliases
-    allowed = {"wake", "standby", "target_grok", "target_here"}
+    allowed = {"wake", "standby", "target_grok", "target_here", "clip"}
     cleaned: dict[str, str] = {}
     for key, value in (mapping or {}).items():
         phrase = re.sub(r"\s+", " ", re.sub(r"[^a-z0-9\s]+", " ", str(key).lower().replace("'", ""))).strip()
@@ -428,6 +440,8 @@ def _map_salt_words(n: str) -> str:
         "say",
         "bye",
         "sleep",
+        "clip",
+        "clipped",
     }
     out: list[str] = []
     i = 0
@@ -613,7 +627,7 @@ def _looks_like_wake(n: str) -> bool:
 
 
 def is_wake_phrase(text: str) -> bool:
-    if is_standby_phrase(text) or is_target_grok_phrase(text) or is_target_here_phrase(text):
+    if is_clip_phrase(text) or is_standby_phrase(text) or is_target_grok_phrase(text) or is_target_here_phrase(text):
         return False
     n = normalize(text)
     if not n or not _looks_like_wake(n):
@@ -643,11 +657,26 @@ def remainder_after_wake(text: str) -> str:
     return rest
 
 
+def is_clip_phrase(text: str) -> bool:
+    n = normalize(text)
+    if not n:
+        return False
+    words = n.split()
+    # Treat "click" as "clip" only when salt is present. Never map bare "click that".
+    if "salt" in words:
+        words = ["clip" if w == "click" else w for w in words]
+    words = ["clip" if w == "clipped" else w for w in words]
+    n = " ".join(words)
+    return _has_any(n, CLIP_PHRASES)
+
+
 def classify_utterance(text: str) -> str:
-    """wake | standby | target_grok | target_here | task"""
+    """wake | standby | target_grok | target_here | clip | task"""
     n = normalize(text)
     if n in _command_aliases:
         return _command_aliases[n]
+    if is_clip_phrase(text):
+        return "clip"
     if is_standby_phrase(text):
         return "standby"
     if is_target_grok_phrase(text):
