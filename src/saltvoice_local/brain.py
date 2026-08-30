@@ -120,9 +120,9 @@ class Brain:
         if kind in {"listen", "start"}:
             kind = "wake"
         if not key:
-            return "Type a phrase, then choose wake or standby."
-        if kind not in {"wake", "standby", "target_grok", "target_here"}:
-            return "Choose wake or standby."
+            return "Type a phrase, then choose wake, standby, or clip."
+        if kind not in {"wake", "standby", "target_grok", "target_here", "clip"}:
+            return "Choose wake, standby, or clip."
         self.commands[key] = kind
         self.save()
         return f"Saved phrase: “{key}” means {kind}."

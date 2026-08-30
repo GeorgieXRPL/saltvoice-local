@@ -32,3 +32,10 @@ grok_bot:
     - Grok Bot
     - Grok
     - Grok Build
+
+clip:
+  # Empty folder/replay_folder use Videos/stream-clips and Videos.
+  folder: ""
+  replay_folder: ""
+  hotkey: "<ctrl>+<alt>+c"
+  overlay_url: "http://127.0.0.1:8787/say"

@@ -32,6 +32,14 @@ class OverlayConfig:
 
 
 @dataclass
+class ClipConfig:
+    folder: str = ""
+    replay_folder: str = ""
+    hotkey: str = "<ctrl>+<alt>+c"
+    overlay_url: str = "http://127.0.0.1:8787/say"
+
+
+@dataclass
 class Settings:
     whisper_model: str = "tiny.en"
     device: str = "cpu"
@@ -48,6 +56,7 @@ class Settings:
     grok_prefer: str = "window"
     grok_cli: str = "grok"
     handoff_target: str = "grok"
+    clip: ClipConfig = field(default_factory=ClipConfig)
     config_path: Path = field(default_factory=lambda: ROOT / "config.yaml")
 
     @property
@@ -84,6 +93,7 @@ def load_settings() -> Settings:
     grok = data.get("grok_bot") or {}
     titles = grok.get("window_titles") or ["Grok Bot", "Grok", "Grok Build"]
     stt = data.get("stt") or {}
+    clip = data.get("clip") or {}
 
     return Settings(
         whisper_model=str(stt.get("model") or data.get("whisper_model") or "tiny.en"),
@@ -104,6 +114,12 @@ def load_settings() -> Settings:
         grok_prefer=str(grok.get("prefer") or "window"),
         grok_cli=str(grok.get("cli") or "grok"),
         handoff_target=str(grok.get("target") or data.get("handoff_target") or "grok").lower(),
+        clip=ClipConfig(
+            folder=str(clip.get("folder") or ""),
+            replay_folder=str(clip.get("replay_folder") or ""),
+            hotkey=str(clip.get("hotkey") or "<ctrl>+<alt>+c"),
+            overlay_url=str(clip.get("overlay_url") or "http://127.0.0.1:8787/say"),
+        ),
         config_path=local,
     )
 
@@ -119,5 +135,6 @@ def describe_setup(settings: Settings) -> list[str]:
         + (" (exists)" if settings.workspace_path.exists() else " (folder missing)"),
         "Starts listening as soon as it opens",
         "Sleep: Salt go to sleep  (say Salt wake up to listen again)",
+        "Clip: Salt clip that — Streamlabs Replay Buffer to Videos\\stream-clips (never pasted)",
         f"Python: {sys.version.split()[0]}",
     ]

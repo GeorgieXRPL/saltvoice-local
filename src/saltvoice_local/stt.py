@@ -72,7 +72,7 @@ def transcribe_pcm(
             vad_filter=False,
             without_timestamps=True,
             condition_on_previous_text=False,
-            initial_prompt="Salt wake up. Salt go on standby. Salt send to grok.",
+            initial_prompt="Salt wake up. Salt go on standby. Salt send to grok. Salt clip that.",
         )
         try:
             segments, _info = _model.transcribe(audio, **kwargs)

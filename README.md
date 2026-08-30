@@ -8,6 +8,9 @@ Standalone, **offline** voice front-end for Windows. Whisper runs on this PC. No
 - **Salt go on standby** — stop listening; talk freely, nothing is sent
 - **Salt send to grok** — paste tasks into Grok Bot (default)
 - **Salt send here** — paste into the app in front (browser, editor, Notepad)
+- **Salt clip that** — save last ~20s of Streamlabs to Videos\\stream-clips (never pasted)
+
+Streamlabs Replay Buffer must be on and Save Replay bound to Ctrl+Alt+C. Brand Studio / Spellbreaker watch that folder.
 
 Old phrases still work: “Salt open voice over”, “Salt stop voice over”. Prefer **wake up** / **go on standby** so Grok Bot never sees the word “stop”.
 
