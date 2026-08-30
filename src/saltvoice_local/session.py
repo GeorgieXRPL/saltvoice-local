@@ -3,8 +3,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from pathlib import Path
 
 from saltvoice_local.audio import AudioBridge
+from saltvoice_local.clip import save_clip
 from saltvoice_local.config import Settings
 from saltvoice_local.phrases import (
     classify_utterance,
@@ -104,6 +106,7 @@ class VoiceSession:
                 on_utterance=self._on_user_final,
                 on_text=lambda text: self.hub.emit("wake-stt", user_text=text, status_line=f"Heard: {text}"),
                 on_target=self.set_target,
+                on_clip=self._on_clip,
                 finish_wait=wait,
                 voice_floor=floor,
             )
@@ -145,6 +148,18 @@ class VoiceSession:
         if self.wake:
             self.wake.voice_floor = max(0.008, min(0.04, float(value)))
 
+    async def _on_clip(self) -> None:
+        log.info("clip — saving Streamlabs replay (not pasted)")
+        result = await asyncio.to_thread(save_clip, self.settings)
+        path = result.get("path") or ""
+        err = result.get("error") or "unknown error"
+        if path:
+            line = f"Clipped: {Path(path).name}"
+        else:
+            line = f"Clip failed: {err}"
+        log.info(line)
+        self.hub.emit("clip", status_line=line)
+
     async def set_target(self, target: str) -> None:
         self.worker.target = target
         label = "Grok Bot" if target == "grok" else "the front window"
@@ -160,6 +175,10 @@ class VoiceSession:
         self._last_user_at = now
         self._last_user_activity = now
         kind = classify_utterance(text)
+        if kind == "clip":
+            log.info("control (not pasted): %s", text)
+            await self._on_clip()
+            return
         if kind == "standby":
             log.info("control (not pasted): %s", text)
             await self.arm(False)

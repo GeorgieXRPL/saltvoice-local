@@ -29,6 +29,7 @@ class WakeWatcher:
         on_utterance: Callable[[str], Awaitable[None]] | None = None,
         on_text: Callable[[str], None] | None = None,
         on_target: Callable[[str], Awaitable[None]] | None = None,
+        on_clip: Callable[[], Awaitable[None]] | None = None,
         finish_wait: float = 2.2,
         voice_floor: float = 0.018,
     ) -> None:
@@ -38,6 +39,7 @@ class WakeWatcher:
         self.on_utterance = on_utterance
         self.on_text = on_text
         self.on_target = on_target
+        self.on_clip = on_clip
         self.finish_wait = max(0.8, min(4.0, float(finish_wait or 2.2)))
         self.voice_floor = max(0.008, min(0.04, float(voice_floor or 0.018)))
         self.enabled = False
@@ -149,6 +151,12 @@ class WakeWatcher:
                 log.info("stt joined fragment → %r", text)
                 self._pending = ""
             kind = classify_utterance(text)
+            if kind == "clip":
+                log.info("stt: %r clip — not sending to any app", text)
+                self._abandon_draft()
+                if self.on_clip:
+                    await self.on_clip()
+                return
             if not self.listening:
                 if kind == "wake":
                     log.info("stt: %r wake — listening", text)
@@ -263,6 +271,11 @@ class WakeWatcher:
         if not text:
             return
         kind = classify_utterance(text)
+        if kind == "clip":
+            log.info("stt: %r clip from draft — not sending to any app", text)
+            if self.on_clip:
+                await self.on_clip()
+            return
         if kind != "task":
             log.info("stt: %r dropped from draft (control)", text)
             return
