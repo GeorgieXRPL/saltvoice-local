@@ -213,6 +213,52 @@ def run(*, check: bool = False) -> int:
         target=settings.handoff_target,
     )
 
+    def _stop_remote_bridge() -> None:
+        from saltvoice_local.remote_bridge import stop_bridge
+
+        try:
+            stop_bridge()
+        except Exception:
+            log.exception("remote bridge stop")
+
+    if settings.remote_bridge_enabled:
+        from saltvoice_local.remote_bridge import start_bridge
+
+        def _send_to_grok(text: str) -> dict:
+            cleaned = (text or "").strip()
+            if not cleaned:
+                return {"status": "error", "error": "Empty instruction"}
+            try:
+                future = asyncio.run_coroutine_threadsafe(
+                    worker.run_computer_task(cleaned),
+                    loop,
+                )
+                result = future.result(timeout=90)
+                if isinstance(result, dict):
+                    return result
+                return {"status": "ok", "result": result}
+            except Exception as exc:
+                log.exception("remote send-to-grok failed")
+                return {"status": "error", "error": str(exc)}
+
+        try:
+            start_bridge(
+                host=settings.remote_bridge_host,
+                port=settings.remote_bridge_port,
+                language=settings.language,
+                grok_callback=_send_to_grok,
+            )
+            print("", flush=True)
+            print(
+                f"SALT REMOTE BRIDGE: http://{settings.remote_bridge_host}:{settings.remote_bridge_port}",
+                flush=True,
+            )
+            print("Phone (Salt Bubble) POST /transcribe over Tailscale to this PC.", flush=True)
+            print("", flush=True)
+        except Exception as exc:
+            log.exception("remote bridge failed")
+            print(f"REMOTE BRIDGE FAILED: {exc}", flush=True)
+
     def _make_session() -> None:
         session_holder["s"] = VoiceSession(settings, hub, audio, worker, brain=brain)
         ready.set()
@@ -269,6 +315,7 @@ def run(*, check: bool = False) -> int:
         await session.close()
 
     def quit_app() -> None:
+        _stop_remote_bridge()
         try:
             future = asyncio.run_coroutine_threadsafe(shutdown(), loop)
             future.result(timeout=8)
@@ -322,6 +369,7 @@ def run(*, check: bool = False) -> int:
         finally:
             listener.stop()
             audio.close()
+            _stop_remote_bridge()
         return 0
 
     call(session.arm(True))

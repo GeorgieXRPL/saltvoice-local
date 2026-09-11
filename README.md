@@ -59,6 +59,18 @@ Saltvoice remembers *your words*, not your whole life. That file is:
 
 Grok Bot should keep the real project memory (what to build, which folders). Saltvoice should only remember how you speak.
 
+## Salt Bubble / phone HUD
+
+The Android **Salt Bubble** overlay can POST 16 kHz WAV clips to this PC over Tailscale (HTTP, not HTTPS) and get a Whisper transcript.
+
+- **remote_bridge** is on by default (`config.yaml` → `remote_bridge.enabled`)
+- Listens on **0.0.0.0:8791**
+  - `POST /transcribe` → JSON `{"text":"..."}`
+  - `POST /transcribe.txt` → plain text
+- Phone and PC must be on the same Tailscale tailnet
+- In Salt Bubble, set host to this PC's MagicDNS name (example: `mypc.tailc2bc11.ts.net`) and port `8791`
+- Windows Firewall: allow inbound TCP **8791** on the Tailscale interface
+
 ## Logs
 
 `%LOCALAPPDATA%\SaltvoiceLocal\saltvoice-local.log`

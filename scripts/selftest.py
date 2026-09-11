@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
+import struct
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -118,8 +122,258 @@ def test_hub() -> None:
     assert hub.phase is Phase.LISTENING
 
 
+def _multipart(field: str, data: bytes, filename: str = "clip.wav") -> tuple[str, bytes]:
+    boundary = "----SaltTestBoundary"
+    body = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="{field}"; filename="{filename}"\r\n'
+        f"Content-Type: audio/wav\r\n\r\n"
+    ).encode("ascii") + data + f"\r\n--{boundary}--\r\n".encode("ascii")
+    return f"multipart/form-data; boundary={boundary}", body
+
+
+def _http_open(req: urllib.request.Request, timeout: float = 3.0):
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    return opener.open(req, timeout=timeout)
+
+
+def test_remote_bridge_wav() -> None:
+    from saltvoice_local.remote_bridge import build_wav, pcm_from_wav
+
+    pcm = b"\x00\x00" * 160
+    wav = build_wav(pcm, sample_rate=16_000, channels=1)
+    assert wav.startswith(b"RIFF")
+    out, rate = pcm_from_wav(wav)
+    assert rate == 16_000
+    assert out == pcm
+
+    stereo = b"".join(struct.pack("<hh", 1000, 2000) for _ in range(8))
+    stereo_wav = build_wav(stereo, sample_rate=16_000, channels=2)
+    mono, rate = pcm_from_wav(stereo_wav)
+    assert rate == 16_000
+    assert struct.unpack("<h", mono[:2])[0] == 1500
+    assert len(mono) == 8 * 2
+
+
+def test_remote_bridge_multipart() -> None:
+    from saltvoice_local.remote_bridge import audio_bytes_from_request, build_wav, parse_multipart_fields
+
+    wav = build_wav(b"\x00\x00" * 32)
+    ctype, body = _multipart("audio", wav)
+    fields = parse_multipart_fields(ctype, body)
+    assert fields["audio"] == wav
+    assert audio_bytes_from_request(ctype, body) == wav
+
+    ctype, body = _multipart("file", wav)
+    assert audio_bytes_from_request(ctype, body) == wav
+
+    both_boundary = "----SaltBoth"
+    both = (
+        f"--{both_boundary}\r\n"
+        f'Content-Disposition: form-data; name="audio"; filename="a.wav"\r\n\r\n'
+    ).encode("ascii") + wav + (
+        f"\r\n--{both_boundary}\r\n"
+        f'Content-Disposition: form-data; name="file"; filename="b.wav"\r\n\r\n'
+    ).encode("ascii") + b"NOPE" + f"\r\n--{both_boundary}--\r\n".encode("ascii")
+    assert audio_bytes_from_request(f"multipart/form-data; boundary={both_boundary}", both) == wav
+
+
+def test_remote_bridge_format() -> None:
+    from saltvoice_local.remote_bridge import encode_transcript
+
+    ctype, body = encode_transcript("hello", plain=False)
+    assert ctype.startswith("application/json")
+    assert json.loads(body.decode("utf-8")) == {"text": "hello"}
+    ctype, body = encode_transcript("hello", plain=True)
+    assert ctype.startswith("text/plain")
+    assert body == b"hello"
+    ctype, body = encode_transcript("", plain=False)
+    assert json.loads(body.decode("utf-8")) == {"text": ""}
+
+
+def test_transcribe_force_skips_gate() -> None:
+    from saltvoice_local import stt
+
+    class _Seg:
+        text = "forced"
+
+    class _Dummy:
+        def transcribe(self, audio, **kwargs):
+            return [_Seg()], None
+
+    prev_on = stt._stt_on
+    prev_model = stt._model
+    pcm = b"\x00\x7f" * 8000
+    try:
+        stt._stt_on = False
+        stt._model = _Dummy()
+        assert stt.transcribe_pcm(pcm, 16_000, min_rms=0.0, force=False) == ""
+        assert stt.transcribe_pcm(pcm, 16_000, min_rms=0.0, force=True) == "forced"
+
+        from saltvoice_local.remote_bridge import RemoteBridge
+
+        seen: dict[str, object] = {}
+        orig = stt.transcribe_pcm
+
+        def _spy(pcm_arg, sample_rate=24000, language="en", min_rms=0.008, force=False):
+            seen["force"] = force
+            return "spy"
+
+        stt.transcribe_pcm = _spy  # type: ignore[method-assign]
+        try:
+            assert RemoteBridge().transcribe(pcm, 16_000) == "spy"
+            assert seen.get("force") is True
+        finally:
+            stt.transcribe_pcm = orig
+    finally:
+        stt._stt_on = prev_on
+        stt._model = prev_model
+
+
+def test_remote_bridge_http() -> None:
+    from saltvoice_local.config import Settings, describe_setup
+    from saltvoice_local.remote_bridge import RemoteBridge, build_wav
+
+    settings = Settings()
+    assert settings.remote_bridge_enabled is True
+    assert settings.remote_bridge_port == 8791
+    assert any("Remote bridge: ON" in line for line in describe_setup(settings))
+
+    def fake_transcribe(pcm: bytes, sample_rate: int, language: str) -> str:
+        return "hello phone"
+
+    grok_got: dict[str, str] = {}
+
+    def grok_cb(text: str) -> dict:
+        grok_got["text"] = text
+        return {"status": "ok"}
+
+    wav = build_wav(b"\x00\x00" * 160)
+    ctype, body = _multipart("audio", wav)
+    bridge = RemoteBridge(
+        host="127.0.0.1",
+        port=0,
+        transcribe_fn=fake_transcribe,
+        grok_callback=None,
+    )
+    bridge.start()
+    try:
+        base = f"http://127.0.0.1:{bridge.port}"
+        with _http_open(urllib.request.Request(f"{base}/health")) as resp:
+            health = json.loads(resp.read().decode("utf-8"))
+            assert resp.status == 200
+            assert health["ok"] is True
+            assert health["service"] == "salt-remote-bridge"
+            assert health["port"] == bridge.port
+            assert resp.headers.get("Access-Control-Allow-Origin") == "*"
+
+        with _http_open(urllib.request.Request(base)) as resp:
+            root = json.loads(resp.read().decode("utf-8"))
+            assert root["ok"] is True
+
+        opt = urllib.request.Request(f"{base}/transcribe", method="OPTIONS")
+        with _http_open(opt) as resp:
+            assert resp.status == 204
+            assert resp.headers.get("Access-Control-Allow-Origin") == "*"
+
+        req = urllib.request.Request(
+            f"{base}/transcribe",
+            data=body,
+            method="POST",
+            headers={"Content-Type": ctype},
+        )
+        with _http_open(req) as resp:
+            assert resp.status == 200
+            assert json.loads(resp.read().decode("utf-8")) == {"text": "hello phone"}
+            assert resp.headers.get("Content-Type", "").startswith("application/json")
+
+        req = urllib.request.Request(
+            f"{base}/transcribe.txt",
+            data=body,
+            method="POST",
+            headers={"Content-Type": ctype},
+        )
+        with _http_open(req) as resp:
+            assert resp.status == 200
+            assert resp.read() == b"hello phone"
+            assert resp.headers.get("Content-Type", "").startswith("text/plain")
+
+        req = urllib.request.Request(
+            f"{base}/transcribe",
+            data=wav,
+            method="POST",
+            headers={"Content-Type": "audio/wav"},
+        )
+        with _http_open(req) as resp:
+            assert json.loads(resp.read().decode("utf-8")) == {"text": "hello phone"}
+
+        req = urllib.request.Request(
+            f"{base}/send-to-grok",
+            data=json.dumps({"text": "open notepad"}).encode("utf-8"),
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            _http_open(req)
+            raise AssertionError("expected 501")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 501
+            assert "error" in json.loads(exc.read().decode("utf-8"))
+
+        silent = build_wav(b"")
+        req = urllib.request.Request(
+            f"{base}/transcribe",
+            data=silent,
+            method="POST",
+            headers={"Content-Type": "audio/wav"},
+        )
+        with _http_open(req) as resp:
+            assert resp.status == 200
+            assert json.loads(resp.read().decode("utf-8")) == {"text": ""}
+
+        req = urllib.request.Request(
+            f"{base}/transcribe",
+            data=b"not-a-wav",
+            method="POST",
+            headers={"Content-Type": "audio/wav"},
+        )
+        try:
+            _http_open(req)
+            raise AssertionError("expected 400")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 400
+            assert "error" in json.loads(exc.read().decode("utf-8"))
+    finally:
+        bridge.stop()
+
+    bridge = RemoteBridge(
+        host="127.0.0.1",
+        port=0,
+        transcribe_fn=fake_transcribe,
+        grok_callback=grok_cb,
+    )
+    bridge.start()
+    try:
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{bridge.port}/send-to-grok",
+            data=json.dumps({"text": "open notepad"}).encode("utf-8"),
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with _http_open(req) as resp:
+            assert json.loads(resp.read().decode("utf-8")) == {"status": "ok"}
+            assert grok_got["text"] == "open notepad"
+    finally:
+        bridge.stop()
+
+
 if __name__ == "__main__":
     test_resample()
     test_phrases()
     test_hub()
+    test_remote_bridge_wav()
+    test_remote_bridge_multipart()
+    test_remote_bridge_format()
+    test_transcribe_force_skips_gate()
+    test_remote_bridge_http()
     print("ok")

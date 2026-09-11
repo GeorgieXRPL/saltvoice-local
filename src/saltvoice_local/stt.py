@@ -26,6 +26,10 @@ def set_listening(on: bool) -> None:
     log.info("STT %s", "ON" if _stt_on else "OFF — Whisper will not run")
 
 
+def model_loaded() -> bool:
+    return _model is not None
+
+
 def load_model(name: str, device: str, compute_type: str, download_root: Path | None = None):
     """Load Whisper once. First run downloads the model into download_root."""
     global _model, _model_name
@@ -53,8 +57,9 @@ def transcribe_pcm(
     sample_rate: int = 24000,
     language: str = "en",
     min_rms: float = 0.008,
+    force: bool = False,
 ) -> str:
-    if not _stt_on:
+    if not force and not _stt_on:
         return ""
     if not pcm or _model is None:
         return ""

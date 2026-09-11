@@ -57,6 +57,9 @@ class Settings:
     grok_cli: str = "grok"
     handoff_target: str = "grok"
     clip: ClipConfig = field(default_factory=ClipConfig)
+    remote_bridge_enabled: bool = True
+    remote_bridge_host: str = "0.0.0.0"
+    remote_bridge_port: int = 8791
     config_path: Path = field(default_factory=lambda: ROOT / "config.yaml")
 
     @property
@@ -94,6 +97,7 @@ def load_settings() -> Settings:
     titles = grok.get("window_titles") or ["Grok Bot", "Grok", "Grok Build"]
     stt = data.get("stt") or {}
     clip = data.get("clip") or {}
+    remote = data.get("remote_bridge") or {}
 
     return Settings(
         whisper_model=str(stt.get("model") or data.get("whisper_model") or "tiny.en"),
@@ -120,6 +124,9 @@ def load_settings() -> Settings:
             hotkey=str(clip.get("hotkey") or "<ctrl>+<alt>+c"),
             overlay_url=str(clip.get("overlay_url") or "http://127.0.0.1:8787/say"),
         ),
+        remote_bridge_enabled=bool(remote.get("enabled", True)),
+        remote_bridge_host=str(remote.get("host") or "0.0.0.0"),
+        remote_bridge_port=int(remote.get("port") or 8791),
         config_path=local,
     )
 
@@ -133,6 +140,11 @@ def describe_setup(settings: Settings) -> list[str]:
         f"Default target: {settings.handoff_target}",
         f"Workspace: {settings.workspace_path}"
         + (" (exists)" if settings.workspace_path.exists() else " (folder missing)"),
+        (
+            f"Remote bridge: ON  http://{settings.remote_bridge_host}:{settings.remote_bridge_port}"
+            if settings.remote_bridge_enabled
+            else "Remote bridge: off"
+        ),
         "Starts listening as soon as it opens",
         "Sleep: Salt go to sleep  (say Salt wake up to listen again)",
         "Clip: Salt clip that — Streamlabs Replay Buffer to Videos\\stream-clips (never pasted)",
