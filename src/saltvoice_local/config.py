@@ -60,6 +60,7 @@ class Settings:
     remote_bridge_enabled: bool = True
     remote_bridge_host: str = "0.0.0.0"
     remote_bridge_port: int = 8791
+    remote_bridge_token: str = ""
     config_path: Path = field(default_factory=lambda: ROOT / "config.yaml")
 
     @property
@@ -127,6 +128,7 @@ def load_settings() -> Settings:
         remote_bridge_enabled=bool(remote.get("enabled", True)),
         remote_bridge_host=str(remote.get("host") or "0.0.0.0"),
         remote_bridge_port=int(remote.get("port") or 8791),
+        remote_bridge_token=str(remote.get("token") or ""),
         config_path=local,
     )
 

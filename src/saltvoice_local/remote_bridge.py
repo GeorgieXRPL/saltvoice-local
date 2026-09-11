@@ -2,10 +2,12 @@ from __future__ import annotations
 
 """HTTP bridge so Salt Bubble can POST WAV audio to local Whisper."""
 
+import hmac
 import io
 import json
 import logging
 import re
+import secrets
 import socket
 import threading
 import time
@@ -13,6 +15,7 @@ import wave
 from email.parser import Parser
 from email.policy import default as email_policy
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlparse
 
@@ -20,10 +23,73 @@ log = logging.getLogger("saltvoice_local")
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8791
-MAX_BODY = 32 * 1024 * 1024
+MAX_BODY = 8 * 1024 * 1024
+TOKEN_HEADER = "X-Salt-Token"
+RATE_MAX = 12
+RATE_WINDOW = 60.0
 
 TranscribeFn = Callable[[bytes, int, str], str]
 GrokCallback = Callable[[str], Any]
+
+
+def extract_token(headers: Any) -> str:
+    raw = ""
+    if headers is not None:
+        raw = str(headers.get(TOKEN_HEADER) or headers.get("Authorization") or "")
+    raw = raw.strip()
+    if raw.lower().startswith("bearer "):
+        return raw[7:].strip()
+    return raw
+
+
+def tokens_match(expected: str, provided: str) -> bool:
+    if not expected:
+        return True
+    left = expected.encode("utf-8")
+    right = (provided or "").encode("utf-8")
+    if len(left) != len(right):
+        hmac.compare_digest(left, left)
+        return False
+    return hmac.compare_digest(left, right)
+
+
+def load_or_create_token(explicit: str, folder: Path) -> str:
+    """Use config token, else persist one under app data so the phone can share it."""
+    cleaned = (explicit or "").strip()
+    if cleaned:
+        return cleaned
+    path = folder / "bridge.token"
+    if path.exists():
+        existing = path.read_text(encoding="utf-8").strip()
+        if existing:
+            return existing
+    token = secrets.token_urlsafe(24)
+    folder.mkdir(parents=True, exist_ok=True)
+    path.write_text(token + "\n", encoding="utf-8")
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+    return token
+
+
+class _RateLimit:
+    def __init__(self, max_n: int = RATE_MAX, window: float = RATE_WINDOW) -> None:
+        self.max_n = max_n
+        self.window = window
+        self._hits: dict[str, list[float]] = {}
+        self._lock = threading.Lock()
+
+    def allow(self, key: str) -> bool:
+        now = time.monotonic()
+        with self._lock:
+            times = [stamp for stamp in self._hits.get(key, []) if now - stamp < self.window]
+            if len(times) >= self.max_n:
+                self._hits[key] = times
+                return False
+            times.append(now)
+            self._hits[key] = times
+            return True
 
 
 def build_wav(
@@ -245,12 +311,24 @@ class _BridgeHandler(BaseHTTPRequestHandler):
             bridge: RemoteBridge = self.server.bridge  # type: ignore[attr-defined]
             self._json(
                 200,
-                {"ok": True, "service": "salt-remote-bridge", "port": bridge.port},
+                {
+                    "ok": True,
+                    "service": "salt-remote-bridge",
+                    "port": bridge.port,
+                    "auth": bool(bridge.token),
+                },
             )
             return
         self._error(404, "not found")
 
     def do_POST(self) -> None:  # noqa: N802
+        bridge: RemoteBridge = self.server.bridge  # type: ignore[attr-defined]
+        if not bridge.authorized(self.headers):
+            self._error(401, "unauthorized")
+            return
+        if not bridge.rate_ok(self.address_string()):
+            self._error(429, "too many requests")
+            return
         path = self._path()
         try:
             body = self._read_body()
@@ -296,9 +374,9 @@ class _BridgeHandler(BaseHTTPRequestHandler):
             log.info("bridge %s %s bytes=%s error=%s", client, path, nbytes, exc)
             self._error(400, str(exc))
             return
-        except Exception as exc:
+        except Exception:
             log.exception("bridge transcribe failed")
-            self._error(500, str(exc))
+            self._error(500, "transcribe failed")
             return
         text = text or ""
         log.info(
@@ -324,12 +402,18 @@ class _BridgeHandler(BaseHTTPRequestHandler):
         if not isinstance(data, dict):
             self._error(400, "invalid JSON")
             return
-        text = str(data.get("text") or "")
+        text = str(data.get("text") or "").strip()
+        if not text:
+            self._error(400, "text is required")
+            return
+        if len(text) > 8000:
+            self._error(400, "text too long")
+            return
         try:
             result = bridge.grok_callback(text)
-        except Exception as exc:
+        except Exception:
             log.exception("bridge send-to-grok failed")
-            self._error(500, str(exc))
+            self._error(500, "send failed")
             return
         if not isinstance(result, dict):
             result = {"status": "ok", "result": result}
@@ -350,23 +434,36 @@ class RemoteBridge:
         language: str = "en",
         grok_callback: GrokCallback | None = None,
         transcribe_fn: TranscribeFn | None = None,
+        token: str = "",
+        rate_max: int = RATE_MAX,
+        rate_window: float = RATE_WINDOW,
     ) -> None:
         self.host = host
         self.port = int(port)
         self.language = language or "en"
         self.grok_callback = grok_callback
+        self.token = (token or "").strip()
         self._transcribe_fn = transcribe_fn
+        self._transcribe_lock = threading.Lock()
+        self._rate = _RateLimit(max_n=rate_max, window=rate_window)
         self._httpd: _BridgeServer | None = None
         self._thread: threading.Thread | None = None
 
-    def transcribe(self, pcm: bytes, sample_rate: int) -> str:
-        if self._transcribe_fn is not None:
-            return self._transcribe_fn(pcm, sample_rate, self.language) or ""
-        from saltvoice_local.stt import model_loaded, transcribe_pcm
+    def authorized(self, headers: Any) -> bool:
+        return tokens_match(self.token, extract_token(headers))
 
-        if not model_loaded():
-            raise RuntimeError("Whisper model is not loaded")
-        return transcribe_pcm(pcm, sample_rate=sample_rate, language=self.language, force=True) or ""
+    def rate_ok(self, client: str) -> bool:
+        return self._rate.allow(client or "unknown")
+
+    def transcribe(self, pcm: bytes, sample_rate: int) -> str:
+        with self._transcribe_lock:
+            if self._transcribe_fn is not None:
+                return self._transcribe_fn(pcm, sample_rate, self.language) or ""
+            from saltvoice_local.stt import model_loaded, transcribe_pcm
+
+            if not model_loaded():
+                raise RuntimeError("Whisper model is not loaded")
+            return transcribe_pcm(pcm, sample_rate=sample_rate, language=self.language, force=True) or ""
 
     def start(self) -> RemoteBridge:
         if self._httpd is not None:
@@ -428,6 +525,7 @@ def start_bridge(
     language: str = "en",
     grok_callback: GrokCallback | None = None,
     transcribe_fn: TranscribeFn | None = None,
+    token: str = "",
 ) -> RemoteBridge:
     global _bridge
     with _bridge_lock:
@@ -439,6 +537,7 @@ def start_bridge(
             language=language,
             grok_callback=grok_callback,
             transcribe_fn=transcribe_fn,
+            token=token,
         )
         try:
             bridge.start()

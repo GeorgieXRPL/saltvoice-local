@@ -24,6 +24,8 @@ remote_bridge:
   enabled: true
   host: "0.0.0.0"
   port: 8791
+  # Leave token empty to auto-create %LOCALAPPDATA%\SaltvoiceLocal\bridge.token
+  token: ""
 
 workspace: ""
 

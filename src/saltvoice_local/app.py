@@ -242,11 +242,15 @@ def run(*, check: bool = False) -> int:
                 return {"status": "error", "error": str(exc)}
 
         try:
+            from saltvoice_local.remote_bridge import load_or_create_token
+
+            bridge_token = load_or_create_token(settings.remote_bridge_token, app_data_dir())
             start_bridge(
                 host=settings.remote_bridge_host,
                 port=settings.remote_bridge_port,
                 language=settings.language,
                 grok_callback=_send_to_grok,
+                token=bridge_token,
             )
             print("", flush=True)
             print(
@@ -254,7 +258,10 @@ def run(*, check: bool = False) -> int:
                 flush=True,
             )
             print("Phone (Salt Bubble) POST /transcribe over Tailscale to this PC.", flush=True)
+            print(f"BRIDGE TOKEN: {bridge_token}", flush=True)
+            print("Paste that token in Salt Bubble → Settings → Bridge token.", flush=True)
             print("", flush=True)
+            log.info("remote bridge token ready (value not written to this log)")
         except Exception as exc:
             log.exception("remote bridge failed")
             print(f"REMOTE BRIDGE FAILED: {exc}", flush=True)

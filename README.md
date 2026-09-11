@@ -65,11 +65,13 @@ The Android **Salt Bubble** overlay can POST 16 kHz WAV clips to this PC over Ta
 
 - **remote_bridge** is on by default (`config.yaml` → `remote_bridge.enabled`)
 - Listens on **0.0.0.0:8791**
-  - `POST /transcribe` → JSON `{"text":"..."}`
+  - `POST /transcribe` → JSON `{"text":"..."}` (requires `X-Salt-Token`)
   - `POST /transcribe.txt` → plain text
+  - `GET /health` is open (no token) so the phone can ping
+- A **bridge token** is created automatically in `%LOCALAPPDATA%\SaltvoiceLocal\bridge.token` (or set `remote_bridge.token` in config). The console prints `BRIDGE TOKEN:` once — paste it into Salt Bubble Settings.
 - Phone and PC must be on the same Tailscale tailnet
 - In Salt Bubble, set host to this PC's MagicDNS name (example: `mypc.tailc2bc11.ts.net`) and port `8791`
-- Windows Firewall: allow inbound TCP **8791** on the Tailscale interface
+- Windows Firewall: allow inbound TCP **8791** on the Tailscale interface only if you can scope it to Tailscale
 
 ## Logs
 

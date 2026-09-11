@@ -265,6 +265,7 @@ def test_remote_bridge_http() -> None:
             assert health["ok"] is True
             assert health["service"] == "salt-remote-bridge"
             assert health["port"] == bridge.port
+            assert health["auth"] is False
             assert resp.headers.get("Access-Control-Allow-Origin") == "*"
 
         with _http_open(urllib.request.Request(base)) as resp:
@@ -367,6 +368,80 @@ def test_remote_bridge_http() -> None:
         bridge.stop()
 
 
+def test_remote_bridge_auth_and_rate() -> None:
+    import tempfile
+    from pathlib import Path
+
+    from saltvoice_local.remote_bridge import (
+        RemoteBridge,
+        build_wav,
+        extract_token,
+        load_or_create_token,
+        tokens_match,
+    )
+
+    assert tokens_match("", "anything")
+    assert tokens_match("secret", "secret")
+    assert not tokens_match("secret", "nope")
+    assert not tokens_match("secret", "")
+    assert extract_token({"Authorization": "Bearer abc"}) == "abc"
+    assert extract_token({"X-Salt-Token": "xyz"}) == "xyz"
+
+    folder = Path(tempfile.mkdtemp())
+    first = load_or_create_token("", folder)
+    second = load_or_create_token("", folder)
+    assert first == second
+    assert load_or_create_token("from-config", folder) == "from-config"
+
+    def fake_transcribe(pcm: bytes, sample_rate: int, language: str) -> str:
+        return "ok"
+
+    wav = build_wav(b"\x00\x00" * 160)
+    bridge = RemoteBridge(
+        host="127.0.0.1",
+        port=0,
+        transcribe_fn=fake_transcribe,
+        token="test-token",
+        rate_max=2,
+        rate_window=60.0,
+    )
+    bridge.start()
+    try:
+        base = f"http://127.0.0.1:{bridge.port}"
+        with _http_open(urllib.request.Request(f"{base}/health")) as resp:
+            assert json.loads(resp.read().decode("utf-8"))["auth"] is True
+
+        req = urllib.request.Request(
+            f"{base}/transcribe",
+            data=wav,
+            method="POST",
+            headers={"Content-Type": "audio/wav"},
+        )
+        try:
+            _http_open(req)
+            raise AssertionError("expected 401")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 401
+
+        ok = urllib.request.Request(
+            f"{base}/transcribe",
+            data=wav,
+            method="POST",
+            headers={"Content-Type": "audio/wav", "X-Salt-Token": "test-token"},
+        )
+        with _http_open(ok) as resp:
+            assert json.loads(resp.read().decode("utf-8")) == {"text": "ok"}
+        with _http_open(ok) as resp:
+            assert resp.status == 200
+        try:
+            _http_open(ok)
+            raise AssertionError("expected 429")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 429
+    finally:
+        bridge.stop()
+
+
 if __name__ == "__main__":
     test_resample()
     test_phrases()
@@ -376,4 +451,5 @@ if __name__ == "__main__":
     test_remote_bridge_format()
     test_transcribe_force_skips_gate()
     test_remote_bridge_http()
+    test_remote_bridge_auth_and_rate()
     print("ok")
