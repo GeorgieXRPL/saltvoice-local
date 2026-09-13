@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 from saltvoice_local.audio import AudioBridge
-from saltvoice_local.clip import save_clip
+from saltvoice_local.clip_mark import push_transcript, save_clip_mark
 from saltvoice_local.config import Settings
 from saltvoice_local.phrases import (
     classify_utterance,
@@ -148,15 +148,23 @@ class VoiceSession:
         if self.wake:
             self.wake.voice_floor = max(0.008, min(0.04, float(value)))
 
-    async def _on_clip(self) -> None:
-        log.info("clip — saving Streamlabs replay (not pasted)")
-        result = await asyncio.to_thread(save_clip, self.settings)
+    async def _on_clip(self, source: str = "voice") -> None:
+        log.info("clip mark — saving transcript window (not Streamlabs)")
+        result = await asyncio.to_thread(
+            save_clip_mark,
+            None,
+            source=source,
+            settings=self.settings,
+        )
         path = result.get("path") or ""
-        err = result.get("error") or "unknown error"
+        status = result.get("status") or ""
+        err = result.get("error") or ""
         if path:
-            line = f"Clipped: {Path(path).name}"
+            line = f"Clip saved: {Path(path).name}"
+        elif status == "skipped":
+            line = "Clip skipped: no transcript buffer"
         else:
-            line = f"Clip failed: {err}"
+            line = f"Clip failed: {err or 'unknown error'}"
         log.info(line)
         self.hub.emit("clip", status_line=line)
 
@@ -175,6 +183,9 @@ class VoiceSession:
         self._last_user_at = now
         self._last_user_activity = now
         kind = classify_utterance(text)
+        if kind not in {"clip", "standby", "wake", "target_grok", "target_here"}:
+            if not (is_filler_utterance(text) or is_incomplete_utterance(text) or is_noise_utterance(text)):
+                push_transcript(text)
         if kind == "clip":
             log.info("control (not pasted): %s", text)
             await self._on_clip()

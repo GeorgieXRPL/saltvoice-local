@@ -10,3 +10,10 @@ config.yaml
 models/
 .idea/
 .vscode/
+
+clips/
+
+
+*.apk
+remote-bridge/*.log
+

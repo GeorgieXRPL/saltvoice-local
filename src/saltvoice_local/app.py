@@ -94,7 +94,7 @@ def _banner() -> None:
     print("Start:  listening as soon as it opens. Speak a task.", flush=True)
     print("Pause:  Salt go to sleep / standby / bye   (say Salt wake up to come back)", flush=True)
     print("Also:   Salt send to grok    or    Salt send here", flush=True)
-    print("Or press Ctrl+Alt+G.  Ctrl+Alt+H shows the overlay.  Ctrl+Alt+X quits.", flush=True)
+    print("Or press Ctrl+Alt+G.  Ctrl+Alt+C saves a transcript clip.  Ctrl+Alt+H overlay.  Ctrl+Alt+X quits.", flush=True)
     print("Default: spoken tasks are pasted into Grok Bot.", flush=True)
     print("This black window is only logs. Do not close it.", flush=True)
     print("=================================", flush=True)
@@ -112,6 +112,8 @@ def _console_mirror(_event: str, snapshot: dict) -> None:
         safe_print(f"HEARD: {snapshot['user_text']}", flush=True)
     if _event in {"handoff"}:
         safe_print(f"TASK: {snapshot.get('status_line')}", flush=True)
+    if _event == "clip":
+        safe_print(f"CLIP: {snapshot.get('status_line')}", flush=True)
 
 
 def run(*, check: bool = False) -> int:
@@ -347,11 +349,15 @@ def run(*, check: bool = False) -> int:
         on_open_brain=lambda: _open_path(brain.path),
         on_overlay_settings=show_settings,
     )
+    def save_clip_hotkey() -> None:
+        call(session._on_clip("local-hotkey"))
+
     listener = HotkeyListener(
         settings.hotkeys,
         on_toggle=toggle,
         on_cancel=cancel,
         on_overlay=toggle_overlay,
+        on_clip=save_clip_hotkey,
         on_hold_start=lambda: call(session.arm(True)),
         on_hold_end=lambda: call(session.arm(False)),
         listen_mode=settings.listen_mode if settings.listen_mode == "hold" else "toggle",

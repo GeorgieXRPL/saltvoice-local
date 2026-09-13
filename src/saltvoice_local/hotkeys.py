@@ -36,6 +36,7 @@ class HotkeyListener:
         on_toggle: Callable[[], None],
         on_cancel: Callable[[], None],
         on_overlay: Callable[[], None],
+        on_clip: Callable[[], None] | None = None,
         on_hold_start: Callable[[], None] | None = None,
         on_hold_end: Callable[[], None] | None = None,
         listen_mode: str = "toggle",
@@ -44,6 +45,7 @@ class HotkeyListener:
         self.on_toggle = on_toggle
         self.on_cancel = on_cancel
         self.on_overlay = on_overlay
+        self.on_clip = on_clip
         self.on_hold_start = on_hold_start
         self.on_hold_end = on_hold_end
         self.listen_mode = listen_mode
@@ -60,6 +62,9 @@ class HotkeyListener:
             self.keys.cancel: self.on_cancel,
             self.keys.toggle_overlay: self.on_overlay,
         }
+        clip_combo = getattr(self.keys, "save_clip", "") or ""
+        if clip_combo and self.on_clip is not None:
+            mapping[clip_combo] = self.on_clip
         self._hotkeys = keyboard.GlobalHotKeys(mapping)
         self._hotkeys.start()
 

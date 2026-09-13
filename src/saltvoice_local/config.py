@@ -24,6 +24,7 @@ class Hotkeys:
     hold_talk: str = "<ctrl>+<cmd>"
     cancel: str = "<ctrl>+<alt>+x"
     toggle_overlay: str = "<ctrl>+<alt>+h"
+    save_clip: str = "<ctrl>+<alt>+c"
 
 
 @dataclass
@@ -37,6 +38,8 @@ class ClipConfig:
     replay_folder: str = ""
     hotkey: str = "<ctrl>+<alt>+c"
     overlay_url: str = "http://127.0.0.1:8787/say"
+    # Transcript clip marks (NOT Streamlabs/OBS). Empty → <repo>/clips
+    marks_folder: str = ""
 
 
 @dataclass
@@ -111,6 +114,7 @@ def load_settings() -> Settings:
             hold_talk=str(hot.get("hold_talk") or "<ctrl>+<cmd>"),
             cancel=str(hot.get("cancel") or "<ctrl>+<alt>+x"),
             toggle_overlay=str(hot.get("toggle_overlay") or "<ctrl>+<alt>+h"),
+            save_clip=str(hot.get("save_clip") or "<ctrl>+<alt>+c"),
         ),
         overlay=OverlayConfig(show_on_start=bool(overlay.get("show_on_start", True))),
         auto_sleep_minutes=float(data.get("auto_sleep_minutes") or 8),
@@ -124,6 +128,7 @@ def load_settings() -> Settings:
             replay_folder=str(clip.get("replay_folder") or ""),
             hotkey=str(clip.get("hotkey") or "<ctrl>+<alt>+c"),
             overlay_url=str(clip.get("overlay_url") or "http://127.0.0.1:8787/say"),
+            marks_folder=str(clip.get("marks_folder") or ""),
         ),
         remote_bridge_enabled=bool(remote.get("enabled", True)),
         remote_bridge_host=str(remote.get("host") or "0.0.0.0"),
@@ -149,6 +154,6 @@ def describe_setup(settings: Settings) -> list[str]:
         ),
         "Starts listening as soon as it opens",
         "Sleep: Salt go to sleep  (say Salt wake up to listen again)",
-        "Clip: Salt clip that — Streamlabs Replay Buffer to Videos\\stream-clips (never pasted)",
+        "Clip mark: Ctrl+Alt+C or Salt clip that - last ~30s transcript to clips/ (not Streamlabs)",
         f"Python: {sys.version.split()[0]}",
     ]

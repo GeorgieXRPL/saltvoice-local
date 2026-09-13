@@ -338,6 +338,9 @@ class _BridgeHandler(BaseHTTPRequestHandler):
         if path == "/send-to-grok":
             self._handle_send_to_grok(body)
             return
+        if path == "/clip":
+            self._handle_clip(body)
+            return
         if path in {"/transcribe", "/transcribe.txt"}:
             self._handle_transcribe(path, body)
             return
@@ -379,6 +382,13 @@ class _BridgeHandler(BaseHTTPRequestHandler):
             self._error(500, "transcribe failed")
             return
         text = text or ""
+        if text.strip():
+            try:
+                from saltvoice_local.clip_mark import push_transcript
+
+                push_transcript(text)
+            except Exception:
+                log.debug("clip_mark push failed", exc_info=True)
         log.info(
             "bridge %s %s bytes=%s transcript_len=%s",
             client,
@@ -425,6 +435,40 @@ class _BridgeHandler(BaseHTTPRequestHandler):
         )
         self._json(200, result)
 
+
+
+    def _handle_clip(self, body: bytes) -> None:
+        try:
+            data = json.loads(body.decode("utf-8") or "{}") if body else {}
+        except Exception:
+            self._error(400, "invalid JSON")
+            return
+        if not isinstance(data, dict):
+            self._error(400, "invalid JSON")
+            return
+        text = str(data.get("text") or "")
+        source = str(data.get("source") or "bubble").strip() or "bubble"
+        try:
+            from saltvoice_local.clip_mark import save_clip_mark
+
+            result = save_clip_mark(text or None, source=source)
+        except Exception as exc:
+            log.exception("bridge /clip failed")
+            self._error(500, str(exc))
+            return
+        if result.get("status") == "skipped":
+            self._json(200, result)
+            return
+        if result.get("error"):
+            self._json(500, result)
+            return
+        log.info(
+            "bridge %s /clip source=%s path=%s",
+            self.address_string(),
+            source,
+            result.get("path"),
+        )
+        self._json(200, result)
 
 class RemoteBridge:
     def __init__(
