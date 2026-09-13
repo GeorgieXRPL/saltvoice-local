@@ -22,10 +22,13 @@ overlay:
 
 remote_bridge:
   enabled: true
-  host: "0.0.0.0"
+  # tailscale = bind the Tailscale IPv4 only (not Wi-Fi / LAN).
+  host: tailscale
   port: 8791
   # Leave token empty to auto-create %LOCALAPPDATA%\SaltvoiceLocal\bridge.token
   token: ""
+  # false = refuse POST /send-to-grok (phone Grok share only)
+  allow_send_to_grok: true
 
 workspace: ""
 

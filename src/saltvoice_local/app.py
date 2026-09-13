@@ -244,24 +244,34 @@ def run(*, check: bool = False) -> int:
                 return {"status": "error", "error": str(exc)}
 
         try:
-            from saltvoice_local.remote_bridge import load_or_create_token
+            from saltvoice_local.remote_bridge import (
+                detect_tailscale_dns,
+                load_or_create_token,
+                resolve_bind_host,
+            )
 
+            bind_host = resolve_bind_host(settings.remote_bridge_host)
+            advertised = detect_tailscale_dns() or bind_host
             bridge_token = load_or_create_token(settings.remote_bridge_token, app_data_dir())
-            start_bridge(
-                host=settings.remote_bridge_host,
+            bridge = start_bridge(
+                host=bind_host,
                 port=settings.remote_bridge_port,
                 language=settings.language,
                 grok_callback=_send_to_grok,
                 token=bridge_token,
+                peers_path=app_data_dir() / "bridge.peers",
+                advertised_host=advertised,
+                allow_send_to_grok=settings.remote_bridge_allow_send_to_grok,
             )
             print("", flush=True)
-            print(
-                f"SALT REMOTE BRIDGE: http://{settings.remote_bridge_host}:{settings.remote_bridge_port}",
-                flush=True,
-            )
-            print("Phone (Salt Bubble) POST /transcribe over Tailscale to this PC.", flush=True)
-            print(f"BRIDGE TOKEN: {bridge_token}", flush=True)
-            print("Paste that token in Salt Bubble → Settings → Bridge token.", flush=True)
+            print(f"SALT REMOTE BRIDGE: http://{bind_host}:{bridge.port}  (Tailscale only)", flush=True)
+            if bind_host == "127.0.0.1":
+                print("Tailscale IP not found — bridge is localhost only. Join the tailnet and restart.", flush=True)
+            else:
+                print("Firewall: allow TCP 8791 on the Tailscale adapter only. Do not use Funnel.", flush=True)
+            print("Open this on the phone (same tailnet) to pair. Do not stream this line:", flush=True)
+            print(f"PAIR PHONE: {bridge.pair_url()}", flush=True)
+            print("Window is 15 minutes or until the phone pairs. Token is not printed again.", flush=True)
             print("", flush=True)
             log.info("remote bridge token ready (value not written to this log)")
         except Exception as exc:

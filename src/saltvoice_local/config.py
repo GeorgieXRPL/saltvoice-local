@@ -64,6 +64,7 @@ class Settings:
     remote_bridge_host: str = "0.0.0.0"
     remote_bridge_port: int = 8791
     remote_bridge_token: str = ""
+    remote_bridge_allow_send_to_grok: bool = True
     config_path: Path = field(default_factory=lambda: ROOT / "config.yaml")
 
     @property
@@ -131,9 +132,10 @@ def load_settings() -> Settings:
             marks_folder=str(clip.get("marks_folder") or ""),
         ),
         remote_bridge_enabled=bool(remote.get("enabled", True)),
-        remote_bridge_host=str(remote.get("host") or "0.0.0.0"),
+        remote_bridge_host=str(remote.get("host") or "tailscale"),
         remote_bridge_port=int(remote.get("port") or 8791),
         remote_bridge_token=str(remote.get("token") or ""),
+        remote_bridge_allow_send_to_grok=bool(remote.get("allow_send_to_grok", True)),
         config_path=local,
     )
 
@@ -148,7 +150,7 @@ def describe_setup(settings: Settings) -> list[str]:
         f"Workspace: {settings.workspace_path}"
         + (" (exists)" if settings.workspace_path.exists() else " (folder missing)"),
         (
-            f"Remote bridge: ON  http://{settings.remote_bridge_host}:{settings.remote_bridge_port}"
+            f"Remote bridge: ON  bind={settings.remote_bridge_host}:{settings.remote_bridge_port}"
             if settings.remote_bridge_enabled
             else "Remote bridge: off"
         ),

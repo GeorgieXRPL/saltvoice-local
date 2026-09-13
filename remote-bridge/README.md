@@ -18,7 +18,7 @@ On the phone you need the **text in this chat**, so the bridge returns the trans
 4. Run: `python server.py` (or `run-bridge.bat`).
 5. Note your Tailscale IP / MagicDNS name (e.g. `mypc.tailXXXX.ts.net`).
 
-Bridge listens on `0.0.0.0:8791` but only answer on Tailscale (firewall: allow 8791 from Tailscale interface).
+Prefer the in-app `remote_bridge` (binds Tailscale IPv4 only, pair URL, peer allowlist). This folder is a stand-alone fallback. Do not bind `0.0.0.0` on a café LAN. Firewall: TCP 8791 on the Tailscale adapter only. Keep Funnel off.
 
 ## Android once (Termux from F-Droid)
 ```bash

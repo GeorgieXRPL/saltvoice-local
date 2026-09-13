@@ -17,16 +17,20 @@ from email.policy import default as email_policy
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 log = logging.getLogger("saltvoice_local")
 
-DEFAULT_HOST = "0.0.0.0"
+DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8791
 MAX_BODY = 8 * 1024 * 1024
 TOKEN_HEADER = "X-Salt-Token"
 RATE_MAX = 12
 RATE_WINDOW = 60.0
+PAIR_TTL = 15 * 60
+TAILSCALE_CGNAT = "100.64.0.0/10"
+LOCAL_PEERS = frozenset({"127.0.0.1", "::1", "localhost"})
+CLIENT_DROP_KEYS = frozenset({"visible_windows", "process", "attempts"})
 
 TranscribeFn = Callable[[bytes, int, str], str]
 GrokCallback = Callable[[str], Any]
@@ -71,6 +75,116 @@ def load_or_create_token(explicit: str, folder: Path) -> str:
     except OSError:
         pass
     return token
+
+
+def _is_tailscale_v4(ip: str) -> bool:
+    try:
+        import ipaddress
+
+        return ipaddress.ip_address(ip) in ipaddress.ip_network(TAILSCALE_CGNAT)
+    except ValueError:
+        return False
+
+
+def detect_tailscale_ipv4() -> str:
+    try:
+        completed = __import__("subprocess").run(
+            ["tailscale", "ip", "-4"],
+            capture_output=True,
+            text=True,
+            timeout=2.5,
+            check=False,
+        )
+        if completed.returncode == 0:
+            for line in completed.stdout.splitlines():
+                ip = line.strip().split()[0] if line.strip() else ""
+                if _is_tailscale_v4(ip):
+                    return ip
+    except Exception:
+        log.debug("tailscale ip -4 failed", exc_info=True)
+    try:
+        import ipaddress
+
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            if ipaddress.ip_address(ip) in ipaddress.ip_network(TAILSCALE_CGNAT):
+                return ip
+    except Exception:
+        log.debug("tailscale interface scan failed", exc_info=True)
+    return ""
+
+
+def detect_tailscale_dns() -> str:
+    try:
+        completed = __import__("subprocess").run(
+            ["tailscale", "status", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=3.0,
+            check=False,
+        )
+        if completed.returncode != 0 or not completed.stdout.strip():
+            return ""
+        data = json.loads(completed.stdout)
+        name = str((data.get("Self") or {}).get("DNSName") or "").strip().rstrip(".")
+        return name
+    except Exception:
+        log.debug("tailscale status --json failed", exc_info=True)
+        return ""
+
+
+def resolve_bind_host(configured: str) -> str:
+    """Bind Tailscale only. 0.0.0.0 / auto / empty → Tailscale IPv4, else localhost."""
+    raw = (configured or "").strip()
+    key = raw.lower()
+    if key in {"", "tailscale", "auto", "0.0.0.0", "*", "::"}:
+        return detect_tailscale_ipv4() or "127.0.0.1"
+    return raw
+
+
+def peer_ip(address: str) -> str:
+    raw = (address or "").strip()
+    if not raw:
+        return ""
+    if raw.startswith("["):
+        return raw[1:].split("]", 1)[0]
+    if raw.count(":") == 1:
+        return raw.split(":", 1)[0]
+    return raw
+
+
+def load_peers(path: Path) -> list[str]:
+    if not path.exists():
+        return []
+    out: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        ip = line.strip()
+        if ip and not ip.startswith("#"):
+            out.append(ip)
+    return out
+
+
+def save_peers(path: Path, ips: list[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    body = "".join(f"{ip}\n" for ip in ips)
+    path.write_text(body, encoding="utf-8")
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+
+
+def build_pair_url(host: str, port: int, token: str, exp: int, https: bool = False) -> str:
+    query = urlencode(
+        {
+            "host": host,
+            "port": str(int(port)),
+            "https": "1" if https else "0",
+            "token": token,
+            "exp": str(int(exp)),
+        }
+    )
+    return f"saltbubble://bridge?{query}"
 
 
 class _RateLimit:
@@ -278,17 +392,10 @@ class _BridgeHandler(BaseHTTPRequestHandler):
             path = path.rstrip("/")
         return path or "/"
 
-    def _cors(self) -> None:
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "*")
-        self.send_header("Access-Control-Max-Age", "86400")
-
     def _write(self, code: int, content_type: str, payload: bytes) -> None:
         self.send_response(code)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(payload)))
-        self._cors()
         self.end_headers()
         if payload:
             self.wfile.write(payload)
@@ -302,13 +409,31 @@ class _BridgeHandler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self) -> None:  # noqa: N802
         self.send_response(204)
-        self._cors()
         self.end_headers()
 
     def do_GET(self) -> None:  # noqa: N802
         path = self._path()
+        bridge: RemoteBridge = self.server.bridge  # type: ignore[attr-defined]
+        if path == "/pair":
+            if peer_ip(self.client_address[0]) not in LOCAL_PEERS:
+                self._error(404, "not found")
+                return
+            if not bridge.pair_open():
+                self._error(404, "pair window closed")
+                return
+            self._json(
+                200,
+                {
+                    "ok": True,
+                    "deep": bridge.pair_url(),
+                    "exp": int(bridge.pair_until),
+                },
+            )
+            return
         if path in {"/", "/health"}:
-            bridge: RemoteBridge = self.server.bridge  # type: ignore[attr-defined]
+            if not bridge.peer_allowed(self.client_address[0]):
+                self._error(403, "peer not allowed")
+                return
             self._json(
                 200,
                 {
@@ -316,6 +441,7 @@ class _BridgeHandler(BaseHTTPRequestHandler):
                     "service": "salt-remote-bridge",
                     "port": bridge.port,
                     "auth": bool(bridge.token),
+                    "tailnet": True,
                 },
             )
             return
@@ -326,16 +452,31 @@ class _BridgeHandler(BaseHTTPRequestHandler):
         if not bridge.authorized(self.headers):
             self._error(401, "unauthorized")
             return
+        path = self._path()
+        if path == "/pair":
+            if not bridge.can_pair(self.client_address[0]):
+                self._error(403, "peer not allowed")
+                return
+            ip = bridge.pin_peer(self.client_address[0])
+            self._json(200, {"ok": True, "peer": ip})
+            return
+        if not bridge.peer_allowed(self.client_address[0]):
+            self._error(403, "peer not allowed")
+            return
+        if bridge.pair_open() and not bridge.allowed_ips:
+            bridge.pin_peer(self.client_address[0])
         if not bridge.rate_ok(self.address_string()):
             self._error(429, "too many requests")
             return
-        path = self._path()
         try:
             body = self._read_body()
         except ValueError as exc:
             self._error(400, str(exc))
             return
         if path == "/send-to-grok":
+            if not bridge.allow_send_to_grok:
+                self._error(403, "send-to-grok is disabled")
+                return
             self._handle_send_to_grok(body)
             return
         if path == "/clip":
@@ -427,6 +568,7 @@ class _BridgeHandler(BaseHTTPRequestHandler):
             return
         if not isinstance(result, dict):
             result = {"status": "ok", "result": result}
+        result = {key: value for key, value in result.items() if key not in CLIENT_DROP_KEYS}
         log.info(
             "bridge %s /send-to-grok bytes=%s transcript_len=%s",
             self.address_string(),
@@ -481,6 +623,10 @@ class RemoteBridge:
         token: str = "",
         rate_max: int = RATE_MAX,
         rate_window: float = RATE_WINDOW,
+        peers_path: Path | None = None,
+        advertised_host: str = "",
+        pair_ttl: float = PAIR_TTL,
+        allow_send_to_grok: bool = True,
     ) -> None:
         self.host = host
         self.port = int(port)
@@ -492,9 +638,44 @@ class RemoteBridge:
         self._rate = _RateLimit(max_n=rate_max, window=rate_window)
         self._httpd: _BridgeServer | None = None
         self._thread: threading.Thread | None = None
+        self.peers_path = Path(peers_path) if peers_path else None
+        self.advertised_host = (advertised_host or host or "127.0.0.1").strip()
+        self.allowed_ips: set[str] = set(load_peers(self.peers_path) if self.peers_path else [])
+        self.pair_until = time.time() + float(pair_ttl)
+        self.allow_send_to_grok = bool(allow_send_to_grok)
 
     def authorized(self, headers: Any) -> bool:
         return tokens_match(self.token, extract_token(headers))
+
+    def pair_open(self) -> bool:
+        return time.time() < self.pair_until
+
+    def pair_url(self) -> str:
+        return build_pair_url(self.advertised_host, self.port, self.token, int(self.pair_until))
+
+    def peer_allowed(self, address: str) -> bool:
+        ip = peer_ip(address)
+        if ip in LOCAL_PEERS:
+            return True
+        if not self.allowed_ips:
+            return True
+        return ip in self.allowed_ips
+
+    def can_pair(self, address: str) -> bool:
+        if self.pair_open():
+            return True
+        return self.peer_allowed(address)
+
+    def pin_peer(self, address: str) -> str:
+        ip = peer_ip(address)
+        if not ip:
+            return ""
+        self.allowed_ips = {ip}
+        if self.peers_path is not None:
+            save_peers(self.peers_path, [ip])
+        self.pair_until = 0
+        log.info("bridge paired peer %s (allowlist locked)", ip)
+        return ip
 
     def rate_ok(self, client: str) -> bool:
         return self._rate.allow(client or "unknown")
@@ -570,6 +751,9 @@ def start_bridge(
     grok_callback: GrokCallback | None = None,
     transcribe_fn: TranscribeFn | None = None,
     token: str = "",
+    peers_path: Path | None = None,
+    advertised_host: str = "",
+    allow_send_to_grok: bool = True,
 ) -> RemoteBridge:
     global _bridge
     with _bridge_lock:
@@ -582,6 +766,9 @@ def start_bridge(
             grok_callback=grok_callback,
             transcribe_fn=transcribe_fn,
             token=token,
+            peers_path=peers_path,
+            advertised_host=advertised_host,
+            allow_send_to_grok=allow_send_to_grok,
         )
         try:
             bridge.start()

@@ -442,6 +442,97 @@ def test_remote_bridge_auth_and_rate() -> None:
         bridge.stop()
 
 
+def test_remote_bridge_bind_and_pair() -> None:
+    import tempfile
+    from pathlib import Path
+
+    from saltvoice_local.remote_bridge import (
+        RemoteBridge,
+        build_pair_url,
+        peer_ip,
+        resolve_bind_host,
+    )
+
+    assert resolve_bind_host("192.0.2.10") == "192.0.2.10"
+    assert resolve_bind_host("tailscale") in {"127.0.0.1"} or resolve_bind_host("tailscale").startswith("100.")
+    assert resolve_bind_host("0.0.0.0") in {"127.0.0.1"} or resolve_bind_host("0.0.0.0").startswith("100.")
+    assert peer_ip("100.64.1.8:41234") == "100.64.1.8"
+    assert peer_ip("[fd7a::1]:80") == "fd7a::1"
+    raw = build_pair_url("mypc.tailc2bc11.ts.net", 8791, "secret", 1_800_000_000)
+    assert raw.startswith("saltbubble://bridge?")
+    assert "token=secret" in raw
+    assert "host=mypc.tailc2bc11.ts.net" in raw
+
+    peers = Path(tempfile.mkdtemp()) / "bridge.peers"
+    peers.write_text("203.0.113.9\n", encoding="utf-8")
+    bridge = RemoteBridge(
+        host="127.0.0.1",
+        port=0,
+        token="pair-token",
+        peers_path=peers,
+        pair_ttl=0,
+    )
+    assert not bridge.peer_allowed("203.0.113.8")
+    assert bridge.peer_allowed("203.0.113.9")
+    assert bridge.peer_allowed("127.0.0.1")
+    assert not bridge.pair_open()
+    assert not bridge.can_pair("203.0.113.8")
+    assert bridge.can_pair("203.0.113.9")
+
+    open_bridge = RemoteBridge(
+        host="127.0.0.1",
+        port=0,
+        token="pair-token",
+        peers_path=peers,
+        pair_ttl=60,
+        advertised_host="mypc.tailc2bc11.ts.net",
+    )
+    assert open_bridge.can_pair("198.51.100.4")
+    open_bridge.start()
+    try:
+        base = f"http://127.0.0.1:{open_bridge.port}"
+        with _http_open(urllib.request.Request(f"{base}/pair")) as resp:
+            pair_body = json.loads(resp.read().decode("utf-8"))
+            assert pair_body["ok"] is True
+            assert str(pair_body["deep"]).startswith("saltbubble://bridge?")
+        locked = RemoteBridge(
+            host="127.0.0.1",
+            port=0,
+            token="pair-token",
+            allow_send_to_grok=False,
+            grok_callback=lambda text: {"status": "ok", "visible_windows": ["Secret"]},
+        )
+        locked.start()
+        try:
+            denied = urllib.request.Request(
+                f"http://127.0.0.1:{locked.port}/send-to-grok",
+                data=json.dumps({"text": "open notepad"}).encode("utf-8"),
+                method="POST",
+                headers={"Content-Type": "application/json", "X-Salt-Token": "pair-token"},
+            )
+            try:
+                _http_open(denied)
+                raise AssertionError("expected 403")
+            except urllib.error.HTTPError as exc:
+                assert exc.code == 403
+        finally:
+            locked.stop()
+        req = urllib.request.Request(
+            f"{base}/pair",
+            data=b"{}",
+            method="POST",
+            headers={"Content-Type": "application/json", "X-Salt-Token": "pair-token"},
+        )
+        with _http_open(req) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+            assert body["ok"] is True
+            assert body["peer"] == "127.0.0.1"
+        assert open_bridge.allowed_ips == {"127.0.0.1"}
+        assert not open_bridge.pair_open()
+    finally:
+        open_bridge.stop()
+
+
 if __name__ == "__main__":
     test_resample()
     test_phrases()
@@ -452,4 +543,5 @@ if __name__ == "__main__":
     test_transcribe_force_skips_gate()
     test_remote_bridge_http()
     test_remote_bridge_auth_and_rate()
+    test_remote_bridge_bind_and_pair()
     print("ok")

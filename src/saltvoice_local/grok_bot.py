@@ -437,7 +437,6 @@ def send_to_window(instruction: str, titles: list[str]) -> dict[str, Any]:
         return {
             "status": "error",
             "error": "Could not find a Grok Bot window. Open Grok Bot first.",
-            "visible_windows": titles_only,
         }
     hwnd, title = match
     log.info("handoff targeting window %r hwnd=%s", title, hwnd)
